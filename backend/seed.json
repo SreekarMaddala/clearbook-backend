@@ -1,0 +1,443 @@
+{
+  "accounts": [
+    {
+      "id": "business",
+      "name": "HDFC Business",
+      "type": "INTERNAL",
+      "owner": "Acme Construction",
+      "detail": "Business account · •• 4821"
+    },
+    {
+      "id": "cash",
+      "name": "Site Cash",
+      "type": "INTERNAL",
+      "owner": "Acme Construction",
+      "detail": "Cash on hand"
+    },
+    {
+      "id": "mother",
+      "name": "Mother’s ICICI",
+      "type": "THIRD_PARTY_CREDITOR",
+      "owner": "Meena Mehta",
+      "detail": "Personal account · •• 9034"
+    },
+    {
+      "id": "uncle",
+      "name": "Uncle’s Account",
+      "type": "THIRD_PARTY_CREDITOR",
+      "owner": "Rajesh Mehta",
+      "detail": "Personal account · •• 6628"
+    },
+    {
+      "id": "arjun",
+      "name": "Arjun’s HDFC",
+      "type": "THIRD_PARTY_CREDITOR",
+      "owner": "Arjun Mehta",
+      "detail": "Personal account · •• 1209"
+    }
+  ],
+  "transactions": [
+    {
+      "id": "t01",
+      "date": "2026-11-04",
+      "amount": 15000,
+      "type": "EXPENSE",
+      "payer": "mother",
+      "recipient": null,
+      "category": "Sub Contractor",
+      "mode": "IMPS",
+      "notes": "Weekly labor payment",
+      "vendor": "sabir",
+      "location": "Hyderabad - Block A"
+    },
+    {
+      "id": "t02",
+      "date": "2026-11-04",
+      "amount": 32500,
+      "type": "EXPENSE",
+      "payer": "business",
+      "recipient": null,
+      "category": "Other Expense",
+      "mode": "NEFT",
+      "notes": "Steel reinforcement · Block A",
+      "vendor": "steel",
+      "location": "Hyderabad - Block A"
+    },
+    {
+      "id": "t03",
+      "date": "2026-11-03",
+      "amount": 10000,
+      "type": "PAYBACK",
+      "payer": "business",
+      "recipient": "uncle",
+      "category": null,
+      "mode": "UPI",
+      "notes": "Partial reimbursement",
+      "vendor": null,
+      "location": "Hyderabad - Block A"
+    },
+    {
+      "id": "t04",
+      "date": "2026-11-03",
+      "amount": 8500,
+      "type": "EXPENSE",
+      "payer": "cash",
+      "recipient": null,
+      "category": "Fuel",
+      "mode": "CASH",
+      "notes": "Diesel for site machinery",
+      "vendor": "fuel",
+      "location": "Hyderabad - Block A"
+    },
+    {
+      "id": "t05",
+      "date": "2026-11-02",
+      "amount": 25000,
+      "type": "EXPENSE",
+      "payer": "uncle",
+      "recipient": null,
+      "category": "Sub Contractor",
+      "mode": "UPI",
+      "notes": "Shuttering work · first floor",
+      "vendor": "sabir",
+      "location": "Hyderabad - Block A"
+    },
+    {
+      "id": "t06",
+      "date": "2026-11-02",
+      "amount": 12000,
+      "type": "EXPENSE",
+      "payer": "business",
+      "recipient": null,
+      "category": "Sub Contractor",
+      "mode": "UPI",
+      "notes": "Masonry work · Block B",
+      "vendor": "hem",
+      "location": "Hyderabad - Block A"
+    },
+    {
+      "id": "t07",
+      "date": "2026-11-01",
+      "amount": 4800,
+      "type": "EXPENSE",
+      "payer": "arjun",
+      "recipient": null,
+      "category": "Food",
+      "mode": "UPI",
+      "notes": "Site team meals",
+      "vendor": "food",
+      "location": "Hyderabad - Block A"
+    },
+    {
+      "id": "t08",
+      "date": "2026-10-29",
+      "amount": 18000,
+      "type": "EXPENSE",
+      "payer": "business",
+      "recipient": null,
+      "category": "Other Expense",
+      "mode": "NEFT",
+      "notes": "Concrete mixer rental",
+      "vendor": "equipment",
+      "location": "Hyderabad - Block A"
+    },
+    {
+      "id": "t09",
+      "date": "2026-10-27",
+      "amount": 10000,
+      "type": "EXPENSE",
+      "payer": "business",
+      "recipient": null,
+      "category": "Sub Contractor",
+      "mode": "UPI",
+      "notes": "Weekly labor payment",
+      "vendor": "sabir",
+      "location": "Hyderabad - Block A"
+    },
+    {
+      "id": "t10",
+      "date": "2026-10-25",
+      "amount": 20000,
+      "type": "EXPENSE",
+      "payer": "mother",
+      "recipient": null,
+      "category": "Sub Contractor",
+      "mode": "IMPS",
+      "notes": "Masonry work · second installment",
+      "vendor": "hem",
+      "location": "Hyderabad - Block A"
+    },
+    {
+      "id": "t11",
+      "date": "2026-10-24",
+      "amount": 5000,
+      "type": "PAYBACK",
+      "payer": "business",
+      "recipient": "mother",
+      "category": null,
+      "mode": "UPI",
+      "notes": "Reimbursement installment",
+      "vendor": null,
+      "location": "Hyderabad - Block A"
+    },
+    {
+      "id": "t12",
+      "date": "2026-10-20",
+      "amount": 18000,
+      "type": "EXPENSE",
+      "payer": "arjun",
+      "recipient": null,
+      "category": "Other Expense",
+      "mode": "NEFT",
+      "notes": "Steel reinforcement delivery",
+      "vendor": "steel",
+      "location": "Hyderabad - Block A"
+    },
+    {
+      "id": "t13",
+      "date": "2026-10-16",
+      "amount": 40000,
+      "type": "EXPENSE",
+      "payer": "business",
+      "recipient": null,
+      "category": "Other Expense",
+      "mode": "RTGS",
+      "notes": "Foundation material",
+      "vendor": "steel",
+      "location": "Hyderabad - Block A"
+    },
+    {
+      "id": "t14",
+      "date": "2026-10-11",
+      "amount": 8000,
+      "type": "EXPENSE",
+      "payer": "uncle",
+      "recipient": null,
+      "category": "Other Expense",
+      "mode": "UPI",
+      "notes": "Scaffolding rental",
+      "vendor": "equipment",
+      "location": "Hyderabad - Block A"
+    },
+    {
+      "id": "t15",
+      "date": "2026-10-07",
+      "amount": 15000,
+      "type": "EXPENSE",
+      "payer": "business",
+      "recipient": null,
+      "category": "Sub Contractor",
+      "mode": "UPI",
+      "notes": "Site preparation",
+      "vendor": "hem",
+      "location": "Hyderabad - Block A"
+    },
+    {
+      "id": "t16",
+      "date": "2026-10-03",
+      "amount": 6000,
+      "type": "EXPENSE",
+      "payer": "cash",
+      "recipient": null,
+      "category": "Food",
+      "mode": "CASH",
+      "notes": "Site team meals",
+      "vendor": "food",
+      "location": "Hyderabad - Block A"
+    },
+    {
+      "id": "t17",
+      "date": "2026-09-26",
+      "amount": 22000,
+      "type": "EXPENSE",
+      "payer": "business",
+      "recipient": null,
+      "category": "Other Expense",
+      "mode": "NEFT",
+      "notes": "Foundation supplies",
+      "vendor": "steel",
+      "location": "Hyderabad - Block A"
+    },
+    {
+      "id": "t18",
+      "date": "2026-09-19",
+      "amount": 12500,
+      "type": "EXPENSE",
+      "payer": "business",
+      "recipient": null,
+      "category": "Sub Contractor",
+      "mode": "UPI",
+      "notes": "Shuttering work",
+      "vendor": "sabir",
+      "location": "Hyderabad - Block A"
+    },
+    {
+      "id": "t19",
+      "date": "2026-09-11",
+      "amount": 5000,
+      "type": "EXPENSE",
+      "payer": "cash",
+      "recipient": null,
+      "category": "Fuel",
+      "mode": "CASH",
+      "notes": "Generator fuel",
+      "vendor": "fuel",
+      "location": "Hyderabad - Block A"
+    },
+    {
+      "id": "t20",
+      "date": "2026-09-03",
+      "amount": 16000,
+      "type": "EXPENSE",
+      "payer": "business",
+      "recipient": null,
+      "category": "Sub Contractor",
+      "mode": "UPI",
+      "notes": "Masonry work",
+      "vendor": "hem",
+      "location": "Hyderabad - Block A"
+    },
+    {
+      "id": "t21",
+      "date": "2026-08-25",
+      "amount": 30000,
+      "type": "EXPENSE",
+      "payer": "business",
+      "recipient": null,
+      "category": "Other Expense",
+      "mode": "NEFT",
+      "notes": "Steel purchase",
+      "vendor": "steel",
+      "location": "Hyderabad - Block A"
+    },
+    {
+      "id": "t22",
+      "date": "2026-08-15",
+      "amount": 18000,
+      "type": "EXPENSE",
+      "payer": "mother",
+      "recipient": null,
+      "category": "Sub Contractor",
+      "mode": "UPI",
+      "notes": "Labor payment",
+      "vendor": "sabir",
+      "location": "Hyderabad - Block A"
+    },
+    {
+      "id": "t23",
+      "date": "2026-08-19",
+      "amount": 10000,
+      "type": "PAYBACK",
+      "payer": "business",
+      "recipient": "mother",
+      "category": null,
+      "mode": "NEFT",
+      "notes": "Reimbursement installment",
+      "vendor": null,
+      "location": "Hyderabad - Block A"
+    },
+    {
+      "id": "t24",
+      "date": "2026-08-02",
+      "amount": 4500,
+      "type": "EXPENSE",
+      "payer": "cash",
+      "recipient": null,
+      "category": "Fuel",
+      "mode": "CASH",
+      "notes": "Machinery fuel",
+      "vendor": "fuel",
+      "location": "Hyderabad - Block A"
+    },
+    {
+      "id": "t25",
+      "date": "2026-07-23",
+      "amount": 24000,
+      "type": "EXPENSE",
+      "payer": "business",
+      "recipient": null,
+      "category": "Other Expense",
+      "mode": "NEFT",
+      "notes": "Material delivery",
+      "vendor": "steel",
+      "location": "Hyderabad - Block A"
+    },
+    {
+      "id": "t26",
+      "date": "2026-07-14",
+      "amount": 14000,
+      "type": "EXPENSE",
+      "payer": "business",
+      "recipient": null,
+      "category": "Sub Contractor",
+      "mode": "UPI",
+      "notes": "Labor payment",
+      "vendor": "sabir",
+      "location": "Hyderabad - Block A"
+    },
+    {
+      "id": "t27",
+      "date": "2026-06-20",
+      "amount": 15000,
+      "type": "EXPENSE",
+      "payer": "business",
+      "recipient": null,
+      "category": "Sub Contractor",
+      "mode": "UPI",
+      "notes": "Site mobilization",
+      "vendor": "hem",
+      "location": "Hyderabad - Block A"
+    },
+    {
+      "id": "t28",
+      "date": "2026-06-10",
+      "amount": 20000,
+      "type": "EXPENSE",
+      "payer": "business",
+      "recipient": null,
+      "category": "Other Expense",
+      "mode": "NEFT",
+      "notes": "Excavator hire",
+      "vendor": "equipment",
+      "location": "Hyderabad - Block A"
+    }
+  ],
+  "vendors": [
+    {
+      "id": "sabir",
+      "name": "Sabir Khan",
+      "category": "Sub Contractor",
+      "role": "Labor contractor"
+    },
+    {
+      "id": "hem",
+      "name": "Hem Kumar",
+      "category": "Sub Contractor",
+      "role": "Civil contractor"
+    },
+    {
+      "id": "steel",
+      "name": "Shree Balaji Steels",
+      "category": "Other Expense",
+      "role": "Material supplier"
+    },
+    {
+      "id": "fuel",
+      "name": "Indian Oil",
+      "category": "Fuel",
+      "role": "Fuel supplier"
+    },
+    {
+      "id": "food",
+      "name": "Annapurna Caterers",
+      "category": "Food",
+      "role": "Site catering"
+    },
+    {
+      "id": "equipment",
+      "name": "R.K. Equipment",
+      "category": "Other Expense",
+      "role": "Equipment supplier"
+    }
+  ]
+}

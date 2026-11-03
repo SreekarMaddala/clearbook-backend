@@ -1,0 +1,30 @@
+# Clearbook backend
+
+Independent backend repository: DynamoDB, Cognito, API Gateway and exactly three Python Lambda functions in Hyderabad (`ap-south-2`). Frontend source is maintained separately in `clearbook-frontend`.
+
+## Run locally
+
+```powershell
+python -m pip install -r requirements-dev.txt
+python -m backend.server --seed-demo
+```
+
+API: http://127.0.0.1:8000/api. Start the frontend from its own checkout with `npm run dev`; its development proxy forwards `/api` to this server. The backend does not depend on frontend files or Node.js. Offline storage uses `.local/clearbook.json`; Lambda uses DynamoDB. Omit `--seed-demo` to initialize an empty local store with the 11 categories.
+
+## Tests and deployment
+
+```powershell
+python -m unittest discover -s backend/tests -v
+python scripts/build-backend.py
+sam validate --lint --template-file template.yaml --region ap-south-2
+sam deploy
+```
+
+The SAM defaults point to the existing `clearbook-hyderabad` stack. Build before deploying. AWS credentials are read from your environment/profile; no credentials, local data or generated archives are tracked.
+
+Standalone table script: `python scripts/create-table.py --dry-run`. Super-admin password setup: `python scripts/bootstrap-backend.py --set-admin-password` (masked terminal prompt).
+
+- [Data model and API contract](backend/README.md)
+- [Deployed resources and deployment instructions](backend/DEPLOYMENT.md)
+
+The live API is JWT-protected. Local development is loopback-only and unauthenticated. This repository split does not change deployed AWS resources.

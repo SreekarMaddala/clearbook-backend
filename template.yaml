@@ -1,0 +1,256 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Clearbook Hyderabad - Cognito and 12 API endpoints across exactly three Lambda functions
+Parameters:
+  SuperAdminEmail:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|[^\s@]+@[^\s@]+\.[^\s@]+'
+    Description: Initial workspace super-admin email; set at deployment, no password is stored in the template
+  AllowedOrigin:
+    Type: String
+    Default: http://localhost:5173
+    Description: Exact frontend origin, such as https://billing.example.com
+    AllowedPattern: 'https://[^/]+|http://localhost(:[0-9]+)?|http://127\.0\.0\.1(:[0-9]+)?'
+  CallbackUrl:
+    Type: String
+    Default: http://localhost:5173/
+    Description: Exact frontend callback URL, including trailing slash, such as https://billing.example.com/
+    AllowedPattern: 'https://[^#]+|http://localhost(:[0-9]+)?/[^#]*|http://127\.0\.0\.1(:[0-9]+)?/[^#]*'
+  CognitoDomainPrefix:
+    Type: String
+    Default: clearbook
+    AllowedPattern: '[a-z0-9][a-z0-9-]{0,29}[a-z0-9]'
+    Description: Login domain prefix; AWS account and region are appended for uniqueness
+Globals:
+  Function:
+    Runtime: python3.12
+    Architectures: [x86_64]
+    CodeUri: backend/
+    Timeout: 30
+    MemorySize: 256
+    Environment:
+      Variables:
+        DYNAMODB_TABLE: !Ref LedgerTable
+        WORKSPACE_ID: clearbook
+Conditions:
+  HasSuperAdmin: !Not [!Equals [!Ref SuperAdminEmail, '']]
+Resources:
+  LedgerTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: Application
+          Value: clearbook
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      UserPoolName: !Sub '${AWS::StackName}-users'
+      UserPoolTier: LITE
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true
+      UsernameAttributes: [email]
+      UsernameConfiguration:
+        CaseSensitive: false
+      AutoVerifiedAttributes: [email]
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 12
+          RequireLowercase: true
+          RequireUppercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+          TemporaryPasswordValidityDays: 7
+  LedgerScope:
+    Type: AWS::Cognito::UserPoolResourceServer
+    Properties:
+      UserPoolId: !Ref UserPool
+      Identifier: clearbook
+      Name: Clearbook ledger
+      Scopes:
+        - ScopeName: ledger
+          ScopeDescription: Access this workspace's accounts, vendors and transactions
+  SuperAdminGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      UserPoolId: !Ref UserPool
+      GroupName: SUPER_ADMIN
+      Description: Workspace super administrator
+      Precedence: 0
+  SuperAdminUser:
+    Type: AWS::Cognito::UserPoolUser
+    Condition: HasSuperAdmin
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      UserPoolId: !Ref UserPool
+      Username: !Ref SuperAdminEmail
+      MessageAction: SUPPRESS
+      UserAttributes:
+        - Name: email
+          Value: !Ref SuperAdminEmail
+        - Name: email_verified
+          Value: 'true'
+  SuperAdminMembership:
+    Type: AWS::Cognito::UserPoolUserToGroupAttachment
+    Condition: HasSuperAdmin
+    Properties:
+      UserPoolId: !Ref UserPool
+      GroupName: !Ref SuperAdminGroup
+      Username: !Ref SuperAdminUser
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    DependsOn: LedgerScope
+    Properties:
+      UserPoolId: !Ref UserPool
+      ClientName: clearbook-browser
+      GenerateSecret: false
+      SupportedIdentityProviders: [COGNITO]
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows: [code]
+      AllowedOAuthScopes: [openid, email, profile, clearbook/ledger]
+      CallbackURLs: [!Ref CallbackUrl, 'http://127.0.0.1:5173/']
+      LogoutURLs: [!Ref CallbackUrl, 'http://127.0.0.1:5173/']
+      DefaultRedirectURI: !Ref CallbackUrl
+      PreventUserExistenceErrors: ENABLED
+      EnableTokenRevocation: true
+      AccessTokenValidity: 15
+      IdTokenValidity: 15
+      RefreshTokenValidity: 7
+      TokenValidityUnits:
+        AccessToken: minutes
+        IdToken: minutes
+        RefreshToken: days
+  UserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      UserPoolId: !Ref UserPool
+      Domain: !Sub '${CognitoDomainPrefix}-${AWS::AccountId}-${AWS::Region}'
+  Api:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      CorsConfiguration:
+        AllowOrigins: [!Ref AllowedOrigin, 'http://127.0.0.1:5173']
+        AllowMethods: [GET, POST, PATCH, OPTIONS]
+        AllowHeaders: [Content-Type, Authorization, Idempotency-Key]
+      Auth:
+        DefaultAuthorizer: WorkspaceJwt
+        Authorizers:
+          WorkspaceJwt:
+            IdentitySource: '$request.header.Authorization'
+            AuthorizationScopes: [clearbook/ledger]
+            JwtConfiguration:
+              issuer: !Sub 'https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}'
+              audience: [!Ref UserPoolClient]
+  ReferenceFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: reference_handler.handler
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: [dynamodb:GetItem, dynamodb:Query, dynamodb:PutItem, dynamodb:DeleteItem]
+              Resource: !GetAtt LedgerTable.Arn
+      Events:
+        ListAccounts:
+          Type: HttpApi
+          Properties: {ApiId: !Ref Api, Path: /api/accounts, Method: GET}
+        CreateAccount:
+          Type: HttpApi
+          Properties: {ApiId: !Ref Api, Path: /api/accounts, Method: POST}
+        UpdateAccount:
+          Type: HttpApi
+          Properties: {ApiId: !Ref Api, Path: '/api/accounts/{id}', Method: PATCH}
+        ListVendors:
+          Type: HttpApi
+          Properties: {ApiId: !Ref Api, Path: /api/vendors, Method: GET}
+        CreateVendor:
+          Type: HttpApi
+          Properties: {ApiId: !Ref Api, Path: /api/vendors, Method: POST}
+        UpdateVendor:
+          Type: HttpApi
+          Properties: {ApiId: !Ref Api, Path: '/api/vendors/{id}', Method: PATCH}
+        ListCategories:
+          Type: HttpApi
+          Properties: {ApiId: !Ref Api, Path: /api/categories, Method: GET}
+  TransactionsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: transactions_handler.handler
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: [dynamodb:GetItem, dynamodb:Query, dynamodb:PutItem, dynamodb:DeleteItem]
+              Resource: !GetAtt LedgerTable.Arn
+      Events:
+        ListTransactions:
+          Type: HttpApi
+          Properties: {ApiId: !Ref Api, Path: /api/transactions, Method: GET}
+        CreateTransaction:
+          Type: HttpApi
+          Properties: {ApiId: !Ref Api, Path: /api/transactions, Method: POST}
+        UpdateTransaction:
+          Type: HttpApi
+          Properties: {ApiId: !Ref Api, Path: '/api/transactions/{id}', Method: PATCH}
+        ReverseTransaction:
+          Type: HttpApi
+          Properties: {ApiId: !Ref Api, Path: '/api/transactions/{id}/reverse', Method: POST}
+  DashboardFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: dashboard_handler.handler
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: [dynamodb:GetItem, dynamodb:Query]
+              Resource: !GetAtt LedgerTable.Arn
+      Events:
+        Summary:
+          Type: HttpApi
+          Properties: {ApiId: !Ref Api, Path: /api/dashboard, Method: GET}
+Outputs:
+  SuperAdminEmail:
+    Value: !Ref SuperAdminEmail
+  DynamoDbTableName:
+    Value: !Ref LedgerTable
+  ApiBaseUrl:
+    Value: !Sub 'https://${Api}.execute-api.${AWS::Region}.amazonaws.com/api'
+  UserPoolId:
+    Value: !Ref UserPool
+  UserPoolClientId:
+    Value: !Ref UserPoolClient
+  CognitoDomain:
+    Value: !Sub 'https://${UserPoolDomain}.auth.${AWS::Region}.amazoncognito.com'
+  AuthRedirectUri:
+    Value: !Ref CallbackUrl
+  AwsRegion:
+    Value: !Ref AWS::Region
+  ReferenceFunctionName:
+    Value: !Ref ReferenceFunction
+  TransactionsFunctionName:
+    Value: !Ref TransactionsFunction
+  DashboardFunctionName:
+    Value: !Ref DashboardFunction

@@ -1,0 +1,66 @@
+# Hyderabad backend deployment - DynamoDB
+
+Deployment verified on 4 November 2026. Stack status: `UPDATE_COMPLETE`.
+
+- API: `https://6fevwj9dy0.execute-api.ap-south-2.amazonaws.com/api` (JWT required)
+- DynamoDB table: `clearbook-hyderabad-LedgerTable-JT03VYIDP1R9`
+- Cognito User Pool: `ap-south-2_vy4GCYTNM`
+- App client: `qf45j6u4nn5keh80oo07kbr91`
+- Super admin: `sreekarmaddala9999@gmail.com`, enabled in `SUPER_ADMIN`; private password setup required.
+- 11 categories initialized. Business data starts empty.
+
+Live checks verified all three handlers, all 12 scoped JWT routes, unauthenticated rejection, localhost CORS, and real DynamoDB atomic accounting/idempotency/concurrency. Synthetic write checks used an isolated random workspace, which was removed afterwards. Run `python scripts/verify-backend.py` with the deployment IAM profile to repeat these checks.
+
+Backend stack: **clearbook-hyderabad**. Region: **ap-south-2 (Hyderabad)**. `samconfig.toml` pins the region.
+
+The SAM template provisions one DynamoDB on-demand table, exactly three Lambda functions, API Gateway, and Cognito. No PostgreSQL/RDS, secrets, network subnets or security groups are required. The frontend remains local; Vercel hosting and the browser login/PKCE flow are deferred.
+
+## Deploy
+
+For standalone table setup, use `python scripts/create-table.py --table-name clearbook-ledger`. It creates the string PK/SK table with on-demand capacity, encryption and point-in-time recovery. Re-running verifies the schema without changing an existing table. The default `python scripts/create-table.py` discovers and validates the existing SAM table rather than creating a duplicate. Add `--dry-run` for read-only checks, `--profile PROFILE` for a named AWS profile, or `--initialize-categories` to add the 11 category documents. A standalone table is not automatically attached to the deployed Lambda stack; SAM remains the source of truth for stack-managed resources.
+
+First verify the AWS identity using the intended profile:
+
+```powershell
+aws sts get-caller-identity --region ap-south-2
+sam validate --lint --template-file template.yaml --region ap-south-2
+python scripts/build-backend.py
+sam deploy --template-file .local/deploy/template.yaml --stack-name clearbook-hyderabad --region ap-south-2 --resolve-s3 --capabilities CAPABILITY_IAM --no-confirm-changeset --parameter-overrides SuperAdminEmail=YOUR_EMAIL
+```
+
+The packaging helper creates one shared zip for the three handlers. They use only Python's standard library and boto3 supplied by the Lambda runtime, so Docker and platform-specific dependency builds are unnecessary. It excludes seed data, tests, local storage and credentials.
+
+Default CORS origins: http://localhost:5173 and http://127.0.0.1:5173. Cognito callbacks/logout URLs use the matching root URLs with trailing slash. Public signup is disabled. The public browser OAuth client has no client secret and supports authorization-code flow. The `clearbook/ledger` scope is required by every API route. Use authorization code with PKCE when implementing browser login.
+
+For the eventual Vercel deployment, set SAM parameters `AllowedOrigin` and `CallbackUrl` to the exact Vercel origin and callback. No wildcard origins are used. The app client has 15-minute access tokens and seven-day refresh tokens. API Gateway validates JWTs locally, so previously issued access tokens can remain usable until expiry after logout/revocation.
+
+## Initialize categories and provision the two users
+
+```powershell
+python -m pip install -r scripts/requirements.txt
+python scripts/bootstrap-backend.py
+```
+
+This invokes an IAM-only administrative operation on the existing reference Lambda to initialize the 11 category documents. It creates no fourth Lambda or public endpoint. It does not insert business/sample data into the AWS table. Outputs are public identifiers: API base URL, table name, User Pool ID, client ID, Cognito domain and Lambda names.
+
+The deployed initial account is `sreekarmaddala9999@gmail.com`, attached to the `SUPER_ADMIN` Cognito group. No password is embedded or printed, and no invitation email is sent. Set your password privately in an interactive terminal:
+
+```powershell
+python scripts/bootstrap-backend.py --set-admin-password
+```
+
+The second user is left for you to configure:
+
+```powershell
+python scripts/bootstrap-backend.py --add-user SECOND_USER_EMAIL
+```
+
+Both commands prompt for a masked password. Passwords remain in process memory and are never put in command arguments, files, logs or chat. Administrators should verify the second user's email ownership before provisioning. Adding a user does not replace an existing confirmed user's password. The helper enforces the current two-user setup; further membership changes can be managed explicitly in Cognito. The `SUPER_ADMIN` group is an application role, not permission to administer AWS through the browser. The 12 ledger routes allow authenticated workspace members; user-management HTTP endpoints and frontend administration screens are not part of this backend step.
+
+Use `--profile PROFILE` for a named AWS profile. The IAM identity needs permission to describe the stack, invoke the reference function and (when requested) manage users in this pool. Do not grant those administrator permissions to the browser app.
+
+## Local frontend
+
+Run `python -m backend.server --seed-demo` for the local API at http://127.0.0.1:8000; start the frontend from its separate repository. This keeps offline development available through the local document adapter. To connect to the deployed API later, change `apiBase` in the frontend repository's `config.js` to the returned `ApiBaseUrl` and supply a scoped Cognito access token. The existing client reads `sessionStorage['clearbook-access-token']`. No frontend login flow or Vercel deployment is performed in this backend step.
+
+See [README.md](README.md) for the data model, transaction bounds, API contract and verification. The retained DynamoDB table and Cognito pool are preserved when the stack is deleted; assess stored data before any separate removal.
