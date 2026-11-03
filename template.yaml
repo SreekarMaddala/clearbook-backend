@@ -31,12 +31,110 @@ Globals:
     MemorySize: 256
     Environment:
       Variables:
-        DYNAMODB_TABLE: !Ref LedgerTable
+        DYNAMODB_TABLES: !Sub
+          - '{"accounts":"${Accounts}","vendors":"${Vendors}","categories":"${Categories}","transactions":"${Transactions}","repayment_allocations":"${Allocations}"}'
+          - Accounts: !Ref LedgerTable
+            Vendors: !Ref VendorsTable
+            Categories: !Ref CategoriesTable
+            Transactions: !Ref TransactionsTable
+            Allocations: !Ref RepaymentAllocationsTable
         WORKSPACE_ID: clearbook
 Conditions:
   HasSuperAdmin: !Not [!Equals [!Ref SuperAdminEmail, '']]
 Resources:
   LedgerTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: Application
+          Value: clearbook
+  VendorsTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: Application
+          Value: clearbook
+  CategoriesTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: Application
+          Value: clearbook
+  TransactionsTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: Application
+          Value: clearbook
+  RepaymentAllocationsTable:
     Type: AWS::DynamoDB::Table
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
@@ -173,7 +271,12 @@ Resources:
         - Statement:
             - Effect: Allow
               Action: [dynamodb:GetItem, dynamodb:Query, dynamodb:PutItem, dynamodb:DeleteItem]
-              Resource: !GetAtt LedgerTable.Arn
+              Resource:
+                - !GetAtt LedgerTable.Arn
+                - !GetAtt VendorsTable.Arn
+                - !GetAtt CategoriesTable.Arn
+                - !GetAtt TransactionsTable.Arn
+                - !GetAtt RepaymentAllocationsTable.Arn
       Events:
         ListAccounts:
           Type: HttpApi
@@ -204,7 +307,12 @@ Resources:
         - Statement:
             - Effect: Allow
               Action: [dynamodb:GetItem, dynamodb:Query, dynamodb:PutItem, dynamodb:DeleteItem]
-              Resource: !GetAtt LedgerTable.Arn
+              Resource:
+                - !GetAtt LedgerTable.Arn
+                - !GetAtt VendorsTable.Arn
+                - !GetAtt CategoriesTable.Arn
+                - !GetAtt TransactionsTable.Arn
+                - !GetAtt RepaymentAllocationsTable.Arn
       Events:
         ListTransactions:
           Type: HttpApi
@@ -226,7 +334,12 @@ Resources:
         - Statement:
             - Effect: Allow
               Action: [dynamodb:GetItem, dynamodb:Query]
-              Resource: !GetAtt LedgerTable.Arn
+              Resource:
+                - !GetAtt LedgerTable.Arn
+                - !GetAtt VendorsTable.Arn
+                - !GetAtt CategoriesTable.Arn
+                - !GetAtt TransactionsTable.Arn
+                - !GetAtt RepaymentAllocationsTable.Arn
       Events:
         Summary:
           Type: HttpApi
@@ -235,7 +348,18 @@ Outputs:
   SuperAdminEmail:
     Value: !Ref SuperAdminEmail
   DynamoDbTableName:
+    Description: Accounts table (original physical table retained to preserve data)
     Value: !Ref LedgerTable
+  AccountsTableName:
+    Value: !Ref LedgerTable
+  VendorsTableName:
+    Value: !Ref VendorsTable
+  CategoriesTableName:
+    Value: !Ref CategoriesTable
+  TransactionsTableName:
+    Value: !Ref TransactionsTable
+  RepaymentAllocationsTableName:
+    Value: !Ref RepaymentAllocationsTable
   ApiBaseUrl:
     Value: !Sub 'https://${Api}.execute-api.${AWS::Region}.amazonaws.com/api'
   UserPoolId:

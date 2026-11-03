@@ -1,7 +1,7 @@
 """Create or validate a Clearbook DynamoDB table in Hyderabad.
 
 Default: discover the existing SAM-managed table, without creating a duplicate.
-Explicit --table-name: create a standalone table if it does not exist.
+Explicit --table-name PREFIX: create five standalone tables if missing.
 """
 import argparse
 import copy
@@ -73,7 +73,7 @@ def initialize_categories(client, name, workspace):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     target = parser.add_mutually_exclusive_group()
-    target.add_argument('--table-name', help='Explicit standalone table to create or validate.')
+    target.add_argument('--table-name', help='Prefix for five standalone entity tables to create or validate.')
     target.add_argument('--stack', default='clearbook-hyderabad', help='Existing SAM stack; default: clearbook-hyderabad.')
     parser.add_argument('--profile', help='AWS CLI profile to use.')
     parser.add_argument('--dry-run', action='store_true', help='Read-only: show creation/settings without writing.')
@@ -84,22 +84,30 @@ def main():
         parser.error('Workspace must be 1-80 letters, numbers, hyphens or underscores.')
     session = boto3.Session(profile_name=args.profile, region_name=REGION)
     client = session.client('dynamodb')
-    name = args.table_name
-    if not name:
+    if args.table_name:
+        names = {entity:args.table_name+'-'+entity for entity in ('accounts','vendors','categories','transactions','repayment_allocations')}
+    else:
         stack = session.client('cloudformation').describe_stacks(StackName=args.stack)['Stacks'][0]
-        outputs = {o['OutputKey']: o['OutputValue'] for o in stack.get('Outputs', [])}
-        if outputs.get('AwsRegion') != REGION or not outputs.get('DynamoDbTableName'):
-            raise ValueError('Stack must expose a Hyderabad DynamoDbTableName. Use --table-name for a standalone table.')
-        name = outputs['DynamoDbTableName']
-        # A missing SAM-owned table is infrastructure drift, not permission to replace it.
-        client.describe_table(TableName=name)
-    ensure_table(client, name, dry_run=args.dry_run)
+        outputs = {o['OutputKey']:o['OutputValue'] for o in stack.get('Outputs',[])}
+        keys = {'accounts':'AccountsTableName','vendors':'VendorsTableName','categories':'CategoriesTableName',
+                'transactions':'TransactionsTableName','repayment_allocations':'RepaymentAllocationsTableName'}
+        if outputs.get('AwsRegion') != REGION or not all(key in outputs for key in keys.values()):
+            raise ValueError('Deploy the five-table SAM template first, or supply --table-name PREFIX for standalone tables.')
+        names = {entity:outputs[key] for entity,key in keys.items()}
+        for name in names.values():
+            client.describe_table(TableName=name)
+    for entity,name in names.items():
+        ensure_table(client,name,dry_run=args.dry_run)
+        print(f'{entity}: {name}')
     if args.initialize_categories:
         if args.dry_run:
-            print(f'Would initialize 11 categories in workspace {args.workspace}; no records written.')
+            print('Would initialize 11 categories; no records written.')
         else:
-            initialize_categories(client, name, args.workspace)
-    print(f'Region: {REGION}\nDYNAMODB_TABLE={name}')
+            initialize_categories(client,names,args.workspace)
+    import json
+    print(f'Region: {REGION}')
+    print('DYNAMODB_TABLES='+json.dumps(names))
+
 
 
 if __name__ == '__main__':

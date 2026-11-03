@@ -29,7 +29,7 @@ def main():
         raise RuntimeError('Unexpected deployment region.')
     resources = session.client('cloudformation').list_stack_resources(StackName='clearbook-hyderabad')['StackResourceSummaries']
     assert sum(r['ResourceType']=='AWS::Lambda::Function' for r in resources) == 3
-    assert sum(r['ResourceType']=='AWS::DynamoDB::Table' for r in resources) == 1
+    assert sum(r['ResourceType']=='AWS::DynamoDB::Table' for r in resources) == 5
     assert not any(r['ResourceType'].startswith('AWS::RDS::') for r in resources)
     client = session.client('lambda')
     claims = {'sub':'deployment-verifier','token_use':'access','scope':'openid clearbook/ledger'}
@@ -58,10 +58,11 @@ def main():
     assert len(routes)==12
     assert all(r.get('AuthorizationType')=='JWT' and 'clearbook/ledger' in r.get('AuthorizationScopes',[]) for r in routes)
     print('PASS: all 12 live routes require scoped JWT authentication.')
-    os.environ['DYNAMODB_TABLE']=outputs['DynamoDbTableName']
+    tables={entity:outputs[key] for entity,key in {'accounts':'AccountsTableName','vendors':'VendorsTableName','categories':'CategoriesTableName','transactions':'TransactionsTableName','repayment_allocations':'RepaymentAllocationsTableName'}.items()}
+    os.environ['DYNAMODB_TABLES']=json.dumps(tables)
     os.environ['AWS_REGION']=REGION
     os.environ['WORKSPACE_ID']='verification-'+uuid4().hex
-    scratch = DynamoStore(outputs['DynamoDbTableName'])
+    scratch = DynamoStore(tables)
     assert scratch.pk.startswith('WORKSPACE#verification-')
     def call(method,path,body=None,key=None):
         return dispatch(method,'/api'+path,body,headers={'Idempotency-Key':key or str(uuid4())})

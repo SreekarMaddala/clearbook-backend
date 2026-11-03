@@ -1,4 +1,4 @@
-"""DynamoDB single-table document storage; local JSON adapter for offline development."""
+"""DynamoDB five-table document storage; local JSON adapter for offline development."""
 import copy
 import json
 import os
@@ -59,7 +59,11 @@ class DynamoStore:
         import boto3
         from boto3.dynamodb.types import TypeDeserializer, TypeSerializer
         self.client = client or boto3.client('dynamodb', region_name=os.environ.get('AWS_REGION', 'ap-south-2'))
-        self.table = table
+        self.tables = dict(table) if isinstance(table, dict) else {entity: table for entity in ENTITIES}
+        if set(self.tables) != set(ENTITIES):
+            raise ValueError('Exactly five entity-to-table mappings are required.')
+        self.table = self.tables['accounts']  # Workspace revision lives with accounts.
+        self.legacy = len(set(self.tables.values())) == 1
         self.pk = 'WORKSPACE#' + os.environ.get('WORKSPACE_ID', 'clearbook')
         self.serializer, self.deserializer = TypeSerializer(), TypeDeserializer()
 
@@ -77,20 +81,25 @@ class DynamoStore:
         # Strongly consistent reads bracketed by the revision detect cross-page changes.
         for _ in range(3):
             revision = self.revision()
-            state, cursor = empty_state(), None
-            while True:
-                query = {'TableName': self.table, 'KeyConditionExpression': 'PK = :pk',
-                         'ExpressionAttributeValues': {':pk': {'S': self.pk}}, 'ConsistentRead': True}
-                if cursor:
-                    query['ExclusiveStartKey'] = cursor
-                response = self.client.query(**query)
-                for raw in response.get('Items', []):
-                    item = self.decode(raw)
-                    if item.get('entity') in ENTITIES:
-                        state[item['entity']][item['record_id']] = item['data']
-                cursor = response.get('LastEvaluatedKey')
-                if not cursor:
-                    break
+            state = empty_state()
+            for table in dict.fromkeys(self.tables.values()):
+                cursor = None
+                while True:
+                    query = {'TableName': table, 'KeyConditionExpression': 'PK = :pk',
+                             'ExpressionAttributeValues': {':pk': {'S': self.pk}}, 'ConsistentRead': True}
+                    if cursor:
+                        query['ExclusiveStartKey'] = cursor
+                    response = self.client.query(**query)
+                    for raw in response.get('Items', []):
+                        item = self.decode(raw)
+                        entity = item.get('entity')
+                        if entity in ENTITIES:
+                            if not self.legacy and self.tables[entity] != table:
+                                raise StoreConflict('Storage migration is required. Run scripts/migrate-five-tables.py before using this backend.')
+                            state[entity][item['record_id']] = item['data']
+                    cursor = response.get('LastEvaluatedKey')
+                    if not cursor:
+                        break
             if revision == self.revision():
                 return revision, state
         raise StoreConflict('The ledger changed while loading. Please refresh.')
@@ -104,12 +113,12 @@ class DynamoStore:
                     continue
                 item_key = {'PK': self.pk, 'SK': entity + '#' + key}
                 if new is None:
-                    actions.append({'Delete': {'TableName': self.table, 'Key': self.encode(item_key)}})
+                    actions.append({'Delete': {'TableName': self.tables[entity], 'Key': self.encode(item_key)}})
                 else:
                     item = {**item_key, 'entity': entity, 'record_id': key, 'data': new}
                     if len(json.dumps(item, ensure_ascii=False).encode('utf-8')) > 300000:
                         raise StoreLimitError('This record has reached its audit-history size limit. Contact the administrator.')
-                    actions.append({'Put': {'TableName': self.table, 'Item': self.encode(item)}})
+                    actions.append({'Put': {'TableName': self.tables[entity], 'Item': self.encode(item)}})
         if not actions:
             return
         if len(actions) > 99:
@@ -169,7 +178,7 @@ def _local_state(write):
 
 @contextmanager
 def connection(write=False):
-    table = os.environ.get('DYNAMODB_TABLE')
+    table = json.loads(os.environ['DYNAMODB_TABLES']) if os.environ.get('DYNAMODB_TABLES') else os.environ.get('DYNAMODB_TABLE')
     if table:
         store = DynamoStore(table)
         revision, state = store.read()
@@ -179,7 +188,7 @@ def connection(write=False):
             store.commit(revision, original, state)
     else:
         if os.environ.get('AWS_LAMBDA_FUNCTION_NAME'):
-            raise RuntimeError('DYNAMODB_TABLE is required in Lambda. Local documents are development-only.')
+            raise RuntimeError('DYNAMODB_TABLES is required in Lambda. Local documents are development-only.')
         with _local_state(write) as documents:
             yield documents
 

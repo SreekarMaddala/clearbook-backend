@@ -1,10 +1,14 @@
+# Five-table correction pending deployment
+
+The backend now defines five separate physical DynamoDB tables: accounts, vendors, categories, transactions, and repayment_allocations. This correction is tested locally but has not been applied to AWS. See [migration and deployment status](../FIVE_TABLE_MIGRATION.md). The historical deployment details below describe the prior single-table release.
+
 # Clearbook DynamoDB backend
 
 Production storage is **Amazon DynamoDB in Hyderabad (`ap-south-2`)**. There is no SQL, RDS, database password, VPC or NAT gateway in this stack.
 
 ## Architecture
 
-- One on-demand DynamoDB table, encrypted, with point-in-time recovery and retention on stack deletion.
+- Five on-demand DynamoDB tables, encrypted, with point-in-time recovery and retention on stack deletion.
 - Five document types: accounts, vendors, categories, transactions, repayment allocations.
 - Exactly three Lambdas: reference data (7 routes), transactions (4 routes), dashboard (1 route).
 - Cognito User Pool with public signup disabled. API Gateway validates access tokens and the `clearbook/ledger` scope. The handlers additionally reject missing authentication, ID tokens and missing scopes.

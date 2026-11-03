@@ -1,3 +1,7 @@
+# Five-table correction pending deployment
+
+The backend now defines five separate physical DynamoDB tables: accounts, vendors, categories, transactions, and repayment_allocations. This correction is tested locally but has not been applied to AWS. See [migration and deployment status](../FIVE_TABLE_MIGRATION.md). The historical deployment details below describe the prior single-table release.
+
 # Hyderabad backend deployment - DynamoDB
 
 Deployment verified on 4 November 2026. Stack status: `UPDATE_COMPLETE`.
@@ -13,7 +17,7 @@ Live checks verified all three handlers, all 12 scoped JWT routes, unauthenticat
 
 Backend stack: **clearbook-hyderabad**. Region: **ap-south-2 (Hyderabad)**. `samconfig.toml` pins the region.
 
-The SAM template provisions one DynamoDB on-demand table, exactly three Lambda functions, API Gateway, and Cognito. No PostgreSQL/RDS, secrets, network subnets or security groups are required. The frontend remains local; Vercel hosting and the browser login/PKCE flow are deferred.
+The SAM template provisions five DynamoDB on-demand tables, exactly three Lambda functions, API Gateway, and Cognito. No PostgreSQL/RDS, secrets, network subnets or security groups are required. The frontend remains local; Vercel hosting and the browser login/PKCE flow are deferred.
 
 ## Deploy
 

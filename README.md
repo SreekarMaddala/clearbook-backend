@@ -1,3 +1,7 @@
+# Five-table correction pending deployment
+
+The backend now defines five separate physical DynamoDB tables: accounts, vendors, categories, transactions, and repayment_allocations. This correction is tested locally but has not been applied to AWS. See [migration and deployment status](FIVE_TABLE_MIGRATION.md). The historical deployment details below describe the prior single-table release.
+
 # Clearbook backend
 
 Independent backend repository: DynamoDB, Cognito, API Gateway and exactly three Python Lambda functions in Hyderabad (`ap-south-2`). Frontend source is maintained separately in `clearbook-frontend`.

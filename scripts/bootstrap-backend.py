@@ -83,7 +83,7 @@ def main():
     if args.add_user:
         add_user(session, outputs['UserPoolId'], args.add_user)
     # Only public deployment identifiers are printed. No database URL or passwords.
-    for key in ('AwsRegion','ApiBaseUrl','DynamoDbTableName','UserPoolId','UserPoolClientId','CognitoDomain','AuthRedirectUri','SuperAdminEmail'):
+    for key in ('AwsRegion','ApiBaseUrl','AccountsTableName','VendorsTableName','CategoriesTableName','TransactionsTableName','RepaymentAllocationsTableName','UserPoolId','UserPoolClientId','CognitoDomain','AuthRedirectUri','SuperAdminEmail'):
         print(f'{key}: {outputs[key]}')
 
 

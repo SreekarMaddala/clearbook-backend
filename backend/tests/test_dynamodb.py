@@ -66,6 +66,39 @@ class DynamoStorageTest(unittest.TestCase):
         with Stubber(self.client):
             self.store.commit(1,empty_state(),empty_state())
 
+    def test_five_table_write_is_one_atomic_request(self):
+        tables = {entity:'test-'+entity for entity in empty_state()}
+        store = DynamoStore(tables, client=self.client)
+        before = empty_state()
+        after = copy.deepcopy(before)
+        for entity in tables:
+            after[entity]['record'] = {'amount_paise':100}
+        with patch.object(self.client, 'transact_write_items', return_value={}) as write:
+            store.commit(2,before,after)
+        actions = write.call_args.kwargs['TransactItems']
+        self.assertEqual(len(actions),6)
+        self.assertEqual({a['Put']['TableName'] for a in actions},set(tables.values()))
+        self.assertEqual(actions[-1]['Put']['TableName'],tables['accounts'])
+        self.assertEqual(actions[-1]['Put']['ConditionExpression'],'#revision = :expected')
+
+    def test_five_table_snapshot_queries_every_table(self):
+        tables = {entity:'test-'+entity for entity in empty_state()}
+        store = DynamoStore(tables, client=self.client)
+        with patch.object(store,'revision',return_value=4), patch.object(self.client,'query',return_value={'Items':[]}) as query:
+            revision,state=store.read()
+        self.assertEqual(revision,4)
+        self.assertEqual(state,empty_state())
+        self.assertEqual({c.kwargs['TableName'] for c in query.call_args_list},set(tables.values()))
+        self.assertTrue(all(c.kwargs['ConsistentRead'] for c in query.call_args_list))
+
+    def test_unmigrated_legacy_records_fail_closed(self):
+        tables = {entity:'test-'+entity for entity in empty_state()}
+        store = DynamoStore(tables, client=self.client)
+        item=store.encode({'entity':'vendors','record_id':'v','data':{'name':'Supplier'}})
+        with patch.object(store,'revision',return_value=4), patch.object(self.client,'query',return_value={'Items':[item]}):
+            with self.assertRaisesRegex(StoreConflict,'migration'):
+                store.read()
+
 
 if __name__ == '__main__':
     unittest.main()

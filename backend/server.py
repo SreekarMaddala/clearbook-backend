@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def seed_demo():
-    if os.environ.get('DYNAMODB_TABLE'):
+    if os.environ.get('DYNAMODB_TABLE') or os.environ.get('DYNAMODB_TABLES'):
         raise RuntimeError('Demo seeding is local-only. Do not seed sample data into the AWS table.')
     data = json.loads((ROOT / 'backend' / 'seed.json').read_text(encoding='utf-8'))
     with connection(write=True) as db:
