@@ -14,4 +14,4 @@ region = "ap-south-2"
 resolve_s3 = true
 capabilities = "CAPABILITY_IAM"
 confirm_changeset = true
-parameter_overrides = 'SuperAdminEmail="sreekarmaddala9999@gmail.com"'
+parameter_overrides = 'SuperAdminEmail="sreekarmaddala9999@gmail.com" AllowedOrigin="https://main.d1cy6ym167mgbw.amplifyapp.com" CallbackUrl="https://main.d1cy6ym167mgbw.amplifyapp.com/"'

@@ -1,3 +1,7 @@
+# Provider/customer separation pending deployment
+
+The source adds separate software-provider and customer access. The provider dashboard manages customers and users; customers receive separate ledgers. Deployment and security details are in [backend/README.md](backend/README.md#provider-and-customer-access). Existing shared ledger data is preserved and is not automatically assigned to a customer.
+
 # Five-table correction pending deployment
 
 The backend now defines five separate physical DynamoDB tables: accounts, vendors, categories, transactions, and repayment_allocations. This correction is tested locally but has not been applied to AWS. See [migration and deployment status](FIVE_TABLE_MIGRATION.md). The historical deployment details below describe the prior single-table release.

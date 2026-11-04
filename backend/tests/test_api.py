@@ -7,7 +7,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from backend.api import ROUTES, dispatch, lambda_response
-from backend.database import connection, initialize
+from backend.database import PLATFORM_WORKSPACE, connection, initialize, workspace_scope
 from backend.reference_handler import handler as reference_handler
 from backend.transactions_handler import handler as transactions_handler
 from backend.dashboard_handler import handler as dashboard_handler
@@ -19,6 +19,9 @@ class APITest(unittest.TestCase):
         self.previous_url = os.environ.get('LOCAL_DATA_PATH')
         os.environ['LOCAL_DATA_PATH'] = str(Path(self.temp.name) / 'test.json')
         initialize()
+        with workspace_scope(PLATFORM_WORKSPACE), connection(write=True) as db:
+            db.put('accounts', 'customer#clearbook', {'id':'clearbook', 'name':'Test customer', 'enabled':True})
+            db.put('accounts', 'user#test-user', {'email':'test@example.com', 'customer_id':'clearbook', 'enabled':True})
         self.business = self.create('/accounts', {'name':'Business','type':'INTERNAL','owner':'Company'})
         self.creditor = self.create('/accounts', {'name':'Uncle','type':'THIRD_PARTY_CREDITOR','owner':'Uncle'})
         self.vendor = self.create('/vendors', {'name':'Shree Balaji Steels','category':'Other Expense','role':'Supplier'})

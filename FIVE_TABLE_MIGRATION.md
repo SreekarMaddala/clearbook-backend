@@ -1,3 +1,21 @@
+# Current deployment configuration: use existing tables
+
+The current SAM template uses the five manually created `clearbook-accounts`, `clearbook-vendors`, `clearbook-categories`, `clearbook-transactions`, and `clearbook-repayment_allocations` tables. It does not create or import DynamoDB table resources. The previous update failed because the original SAM-managed LedgerTable was manually deleted. That reference is now removed. The Cognito resources remain unchanged.
+
+From the backend repository:
+
+```powershell
+python scripts/create-table.py --table-name clearbook --initialize-categories
+python scripts/build-backend.py
+sam deploy --no-confirm-changeset
+python scripts/bootstrap-backend.py
+python scripts/verify-backend.py
+```
+
+Run each command only after the previous command succeeds. The five table-name parameters default to the exact names above. Inspect the change set before deployment if you have customized those names. No legacy migration is required if you deliberately deleted the original data and are starting fresh. Do not delete any retained rollback tables until their contents have been checked. This change has only been checked locally; live redeployment is still required. Historical migration/deployment notes below are superseded by this section.
+
+---
+
 # Five-table correction — prepared locally, not deployed
 
 The agreed storage model is five **physical DynamoDB tables**:

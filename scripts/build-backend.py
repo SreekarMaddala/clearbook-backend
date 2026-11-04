@@ -3,7 +3,7 @@ from pathlib import Path
 from zipfile import ZipFile, ZIP_DEFLATED
 
 ROOT = Path(__file__).resolve().parent.parent
-FILES = ('api.py', 'database.py', 'service.py', 'reference_handler.py',
+FILES = ('api.py', 'access.py', 'provider.py', 'database.py', 'service.py', 'reference_handler.py',
          'transactions_handler.py', 'dashboard_handler.py')
 
 

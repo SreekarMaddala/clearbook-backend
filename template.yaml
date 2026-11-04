@@ -1,7 +1,32 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: Clearbook Hyderabad - Cognito and 12 API endpoints across exactly three Lambda functions
+Description: Clearbook Hyderabad - separate provider and customer access across three Lambda functions
 Parameters:
+  RepaymentAllocationsTable:
+    Type: String
+    Default: clearbook-repayment_allocations
+    AllowedPattern: '[A-Za-z0-9_.-]{3,255}'
+    Description: Existing repayment_allocations DynamoDB table; managed by scripts/create-table.py
+  TransactionsTable:
+    Type: String
+    Default: clearbook-transactions
+    AllowedPattern: '[A-Za-z0-9_.-]{3,255}'
+    Description: Existing transactions DynamoDB table; managed by scripts/create-table.py
+  CategoriesTable:
+    Type: String
+    Default: clearbook-categories
+    AllowedPattern: '[A-Za-z0-9_.-]{3,255}'
+    Description: Existing categories DynamoDB table; managed by scripts/create-table.py
+  VendorsTable:
+    Type: String
+    Default: clearbook-vendors
+    AllowedPattern: '[A-Za-z0-9_.-]{3,255}'
+    Description: Existing vendors DynamoDB table; managed by scripts/create-table.py
+  AccountsTable:
+    Type: String
+    Default: clearbook-accounts
+    AllowedPattern: '[A-Za-z0-9_.-]{3,255}'
+    Description: Existing accounts DynamoDB table; managed by scripts/create-table.py
   SuperAdminEmail:
     Type: String
     Default: ''
@@ -9,12 +34,12 @@ Parameters:
     Description: Initial workspace super-admin email; set at deployment, no password is stored in the template
   AllowedOrigin:
     Type: String
-    Default: http://localhost:5173
+    Default: https://main.d1cy6ym167mgbw.amplifyapp.com
     Description: Exact frontend origin, such as https://billing.example.com
     AllowedPattern: 'https://[^/]+|http://localhost(:[0-9]+)?|http://127\.0\.0\.1(:[0-9]+)?'
   CallbackUrl:
     Type: String
-    Default: http://localhost:5173/
+    Default: https://main.d1cy6ym167mgbw.amplifyapp.com/
     Description: Exact frontend callback URL, including trailing slash, such as https://billing.example.com/
     AllowedPattern: 'https://[^#]+|http://localhost(:[0-9]+)?/[^#]*|http://127\.0\.0\.1(:[0-9]+)?/[^#]*'
   CognitoDomainPrefix:
@@ -33,7 +58,7 @@ Globals:
       Variables:
         DYNAMODB_TABLES: !Sub
           - '{"accounts":"${Accounts}","vendors":"${Vendors}","categories":"${Categories}","transactions":"${Transactions}","repayment_allocations":"${Allocations}"}'
-          - Accounts: !Ref LedgerTable
+          - Accounts: !Ref AccountsTable
             Vendors: !Ref VendorsTable
             Categories: !Ref CategoriesTable
             Transactions: !Ref TransactionsTable
@@ -42,121 +67,6 @@ Globals:
 Conditions:
   HasSuperAdmin: !Not [!Equals [!Ref SuperAdminEmail, '']]
 Resources:
-  LedgerTable:
-    Type: AWS::DynamoDB::Table
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
-    Properties:
-      BillingMode: PAY_PER_REQUEST
-      AttributeDefinitions:
-        - AttributeName: PK
-          AttributeType: S
-        - AttributeName: SK
-          AttributeType: S
-      KeySchema:
-        - AttributeName: PK
-          KeyType: HASH
-        - AttributeName: SK
-          KeyType: RANGE
-      SSESpecification:
-        SSEEnabled: true
-      PointInTimeRecoverySpecification:
-        PointInTimeRecoveryEnabled: true
-      Tags:
-        - Key: Application
-          Value: clearbook
-  VendorsTable:
-    Type: AWS::DynamoDB::Table
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
-    Properties:
-      BillingMode: PAY_PER_REQUEST
-      AttributeDefinitions:
-        - AttributeName: PK
-          AttributeType: S
-        - AttributeName: SK
-          AttributeType: S
-      KeySchema:
-        - AttributeName: PK
-          KeyType: HASH
-        - AttributeName: SK
-          KeyType: RANGE
-      SSESpecification:
-        SSEEnabled: true
-      PointInTimeRecoverySpecification:
-        PointInTimeRecoveryEnabled: true
-      Tags:
-        - Key: Application
-          Value: clearbook
-  CategoriesTable:
-    Type: AWS::DynamoDB::Table
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
-    Properties:
-      BillingMode: PAY_PER_REQUEST
-      AttributeDefinitions:
-        - AttributeName: PK
-          AttributeType: S
-        - AttributeName: SK
-          AttributeType: S
-      KeySchema:
-        - AttributeName: PK
-          KeyType: HASH
-        - AttributeName: SK
-          KeyType: RANGE
-      SSESpecification:
-        SSEEnabled: true
-      PointInTimeRecoverySpecification:
-        PointInTimeRecoveryEnabled: true
-      Tags:
-        - Key: Application
-          Value: clearbook
-  TransactionsTable:
-    Type: AWS::DynamoDB::Table
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
-    Properties:
-      BillingMode: PAY_PER_REQUEST
-      AttributeDefinitions:
-        - AttributeName: PK
-          AttributeType: S
-        - AttributeName: SK
-          AttributeType: S
-      KeySchema:
-        - AttributeName: PK
-          KeyType: HASH
-        - AttributeName: SK
-          KeyType: RANGE
-      SSESpecification:
-        SSEEnabled: true
-      PointInTimeRecoverySpecification:
-        PointInTimeRecoveryEnabled: true
-      Tags:
-        - Key: Application
-          Value: clearbook
-  RepaymentAllocationsTable:
-    Type: AWS::DynamoDB::Table
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
-    Properties:
-      BillingMode: PAY_PER_REQUEST
-      AttributeDefinitions:
-        - AttributeName: PK
-          AttributeType: S
-        - AttributeName: SK
-          AttributeType: S
-      KeySchema:
-        - AttributeName: PK
-          KeyType: HASH
-        - AttributeName: SK
-          KeyType: RANGE
-      SSESpecification:
-        SSEEnabled: true
-      PointInTimeRecoverySpecification:
-        PointInTimeRecoveryEnabled: true
-      Tags:
-        - Key: Application
-          Value: clearbook
   UserPool:
     Type: AWS::Cognito::UserPool
     DeletionPolicy: Retain
@@ -196,7 +106,7 @@ Resources:
     Properties:
       UserPoolId: !Ref UserPool
       GroupName: SUPER_ADMIN
-      Description: Workspace super administrator
+      Description: Software provider; customer ledger access is denied
       Precedence: 0
   SuperAdminUser:
     Type: AWS::Cognito::UserPoolUser
@@ -230,8 +140,8 @@ Resources:
       AllowedOAuthFlowsUserPoolClient: true
       AllowedOAuthFlows: [code]
       AllowedOAuthScopes: [openid, email, profile, clearbook/ledger]
-      CallbackURLs: [!Ref CallbackUrl, 'http://127.0.0.1:5173/']
-      LogoutURLs: [!Ref CallbackUrl, 'http://127.0.0.1:5173/']
+      CallbackURLs: [!Ref CallbackUrl, 'http://localhost:5173/', 'http://127.0.0.1:5173/']
+      LogoutURLs: [!Ref CallbackUrl, 'http://localhost:5173/', 'http://127.0.0.1:5173/']
       DefaultRedirectURI: !Ref CallbackUrl
       PreventUserExistenceErrors: ENABLED
       EnableTokenRevocation: true
@@ -251,9 +161,10 @@ Resources:
     Type: AWS::Serverless::HttpApi
     Properties:
       CorsConfiguration:
-        AllowOrigins: [!Ref AllowedOrigin, 'http://127.0.0.1:5173']
+        AllowOrigins: [!Ref AllowedOrigin, 'http://localhost:5173', 'http://127.0.0.1:5173']
         AllowMethods: [GET, POST, PATCH, OPTIONS]
         AllowHeaders: [Content-Type, Authorization, Idempotency-Key]
+        MaxAge: 600
       Auth:
         DefaultAuthorizer: WorkspaceJwt
         Authorizers:
@@ -267,17 +178,44 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       Handler: reference_handler.handler
+      Environment:
+        Variables:
+          USER_POOL_ID: !Ref UserPool
       Policies:
         - Statement:
             - Effect: Allow
               Action: [dynamodb:GetItem, dynamodb:Query, dynamodb:PutItem, dynamodb:DeleteItem]
               Resource:
-                - !GetAtt LedgerTable.Arn
-                - !GetAtt VendorsTable.Arn
-                - !GetAtt CategoriesTable.Arn
-                - !GetAtt TransactionsTable.Arn
-                - !GetAtt RepaymentAllocationsTable.Arn
+                - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${AccountsTable}'
+                - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${VendorsTable}'
+                - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${CategoriesTable}'
+                - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TransactionsTable}'
+                - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${RepaymentAllocationsTable}'
+            - Effect: Allow
+              Action: [cognito-idp:AdminCreateUser, cognito-idp:AdminGetUser, cognito-idp:AdminListGroupsForUser]
+              Resource: !GetAtt UserPool.Arn
       Events:
+        Session:
+          Type: HttpApi
+          Properties: {ApiId: !Ref Api, Path: /api/session, Method: GET}
+        ListCustomers:
+          Type: HttpApi
+          Properties: {ApiId: !Ref Api, Path: /api/provider/customers, Method: GET}
+        CreateCustomer:
+          Type: HttpApi
+          Properties: {ApiId: !Ref Api, Path: /api/provider/customers, Method: POST}
+        UpdateCustomer:
+          Type: HttpApi
+          Properties: {ApiId: !Ref Api, Path: '/api/provider/customers/{id}', Method: PATCH}
+        ListUsers:
+          Type: HttpApi
+          Properties: {ApiId: !Ref Api, Path: /api/provider/users, Method: GET}
+        CreateUser:
+          Type: HttpApi
+          Properties: {ApiId: !Ref Api, Path: /api/provider/users, Method: POST}
+        UpdateUser:
+          Type: HttpApi
+          Properties: {ApiId: !Ref Api, Path: '/api/provider/users/{id}', Method: PATCH}
         ListAccounts:
           Type: HttpApi
           Properties: {ApiId: !Ref Api, Path: /api/accounts, Method: GET}
@@ -308,11 +246,11 @@ Resources:
             - Effect: Allow
               Action: [dynamodb:GetItem, dynamodb:Query, dynamodb:PutItem, dynamodb:DeleteItem]
               Resource:
-                - !GetAtt LedgerTable.Arn
-                - !GetAtt VendorsTable.Arn
-                - !GetAtt CategoriesTable.Arn
-                - !GetAtt TransactionsTable.Arn
-                - !GetAtt RepaymentAllocationsTable.Arn
+                - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${AccountsTable}'
+                - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${VendorsTable}'
+                - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${CategoriesTable}'
+                - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TransactionsTable}'
+                - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${RepaymentAllocationsTable}'
       Events:
         ListTransactions:
           Type: HttpApi
@@ -335,11 +273,11 @@ Resources:
             - Effect: Allow
               Action: [dynamodb:GetItem, dynamodb:Query]
               Resource:
-                - !GetAtt LedgerTable.Arn
-                - !GetAtt VendorsTable.Arn
-                - !GetAtt CategoriesTable.Arn
-                - !GetAtt TransactionsTable.Arn
-                - !GetAtt RepaymentAllocationsTable.Arn
+                - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${AccountsTable}'
+                - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${VendorsTable}'
+                - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${CategoriesTable}'
+                - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TransactionsTable}'
+                - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${RepaymentAllocationsTable}'
       Events:
         Summary:
           Type: HttpApi
@@ -348,10 +286,10 @@ Outputs:
   SuperAdminEmail:
     Value: !Ref SuperAdminEmail
   DynamoDbTableName:
-    Description: Accounts table (original physical table retained to preserve data)
-    Value: !Ref LedgerTable
+    Description: Existing accounts table
+    Value: !Ref AccountsTable
   AccountsTableName:
-    Value: !Ref LedgerTable
+    Value: !Ref AccountsTable
   VendorsTableName:
     Value: !Ref VendorsTable
   CategoriesTableName:

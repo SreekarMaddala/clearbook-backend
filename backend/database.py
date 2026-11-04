@@ -4,6 +4,7 @@ import json
 import os
 import threading
 from contextlib import contextmanager
+from contextvars import ContextVar
 from decimal import Decimal
 from pathlib import Path
 from uuid import uuid4
@@ -13,6 +14,18 @@ CATEGORIES = ['Fuel', 'Food', 'Porter', 'Labour Transport', 'Power Tools', 'Toll
               'Machinery Repair', 'Machinery Purchase', 'Other Expense', 'Labour Tips', 'Sub Contractor']
 ENTITIES = ('accounts', 'vendors', 'categories', 'transactions', 'repayment_allocations')
 _LOCAL_LOCK = threading.RLock()
+_WORKSPACE = ContextVar('clearbook_workspace', default=None)
+PLATFORM_WORKSPACE = '__provider__'
+
+
+@contextmanager
+def workspace_scope(workspace_id):
+    """Select storage using server-authorized identity, never client input."""
+    token = _WORKSPACE.set(workspace_id)
+    try:
+        yield
+    finally:
+        _WORKSPACE.reset(token)
 
 
 class StoreConflict(Exception):
@@ -64,7 +77,7 @@ class DynamoStore:
             raise ValueError('Exactly five entity-to-table mappings are required.')
         self.table = self.tables['accounts']  # Workspace revision lives with accounts.
         self.legacy = len(set(self.tables.values())) == 1
-        self.pk = 'WORKSPACE#' + os.environ.get('WORKSPACE_ID', 'clearbook')
+        self.pk = 'WORKSPACE#' + (_WORKSPACE.get() or os.environ.get('WORKSPACE_ID', 'clearbook'))
         self.serializer, self.deserializer = TypeSerializer(), TypeDeserializer()
 
     def encode(self, value):
@@ -144,6 +157,12 @@ class DynamoStore:
 @contextmanager
 def _local_state(write):
     path = Path(os.environ.get('LOCAL_DATA_PATH', str(ROOT.parent / '.local' / 'clearbook.json')))
+    workspace = _WORKSPACE.get()
+    if workspace and workspace != os.environ.get('WORKSPACE_ID', 'clearbook'):
+        # Hash the server-selected ID so it cannot become a filesystem path.
+        import hashlib
+        suffix = hashlib.sha256(workspace.encode()).hexdigest()
+        path = path.with_name(f'{path.stem}.{suffix}{path.suffix}')
     path.parent.mkdir(parents=True, exist_ok=True)
     with _LOCAL_LOCK, open(str(path) + '.lock', 'a+b') as lock:
         lock.seek(0, 2)

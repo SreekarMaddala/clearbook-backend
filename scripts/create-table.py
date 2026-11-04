@@ -7,6 +7,7 @@ import argparse
 import copy
 import re
 import sys
+import time
 from pathlib import Path
 
 import boto3
@@ -24,7 +25,20 @@ def validate_schema(table):
         raise ValueError('Existing table has an incompatible key schema. Expected string PK (partition) and SK (sort). No changes made.')
 
 
-def ensure_table(client, name, dry_run=False):
+def enable_recovery(client, name, attempts=12):
+    for attempt in range(attempts):
+        try:
+            client.update_continuous_backups(TableName=name, PointInTimeRecoverySpecification={'PointInTimeRecoveryEnabled': True})
+            return
+        except ClientError as error:
+            if error.response['Error']['Code'] not in ('ContinuousBackupsUnavailableException', 'ResourceInUseException') or attempt == attempts - 1:
+                raise
+            delay = min(3 * (attempt + 1), 10)
+            print(f'{name}: backup service is starting; retrying in {delay}s ({attempt + 1}/{attempts}).', flush=True)
+            time.sleep(delay)
+
+
+def ensure_table(client, name, dry_run=False, repair_recovery=False):
     if not re.fullmatch(r'[A-Za-z0-9_.-]{3,255}', name):
         raise ValueError('Table name must be 3-255 letters, numbers, underscores, hyphens or periods.')
     try:
@@ -33,7 +47,12 @@ def ensure_table(client, name, dry_run=False):
         table = None
     if table:
         validate_schema(table)
-        print(f'Existing table verified: {name}. No table settings changed.')
+        if repair_recovery and not dry_run:
+            client.get_waiter('table_exists').wait(TableName=name, WaiterConfig={'Delay': 3, 'MaxAttempts': 100})
+            enable_recovery(client, name)
+            print(f'Existing table verified: {name}; point-in-time recovery enabled.')
+        else:
+            print(f'Existing table verified: {name}. No table settings changed.')
         return False
     if dry_run:
         print(f'Would create {name} in {REGION}: string PK/SK, on-demand capacity, encryption, point-in-time recovery.')
@@ -49,8 +68,8 @@ def ensure_table(client, name, dry_run=False):
         print('Table was created concurrently; waiting and checking its schema.')
     client.get_waiter('table_exists').wait(TableName=name, WaiterConfig={'Delay': 3, 'MaxAttempts': 100})
     validate_schema(client.describe_table(TableName=name)['Table'])
-    if created:
-        client.update_continuous_backups(TableName=name, PointInTimeRecoverySpecification={'PointInTimeRecoveryEnabled': True})
+    if created or repair_recovery:
+        enable_recovery(client, name)
         print(f'Created {name}; point-in-time recovery enabled.')
     else:
         print(f'Existing table verified: {name}. No table settings changed.')
@@ -97,7 +116,7 @@ def main():
         for name in names.values():
             client.describe_table(TableName=name)
     for entity,name in names.items():
-        ensure_table(client,name,dry_run=args.dry_run)
+        ensure_table(client,name,dry_run=args.dry_run,repair_recovery=bool(args.table_name))
         print(f'{entity}: {name}')
     if args.initialize_categories:
         if args.dry_run:

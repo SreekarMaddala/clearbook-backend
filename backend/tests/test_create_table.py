@@ -48,6 +48,30 @@ class TableCreationTest(unittest.TestCase):
             waiter.wait.assert_called_once_with(TableName='ledger', WaiterConfig={'Delay':3, 'MaxAttempts':100})
             stub.assert_no_pending_responses()
 
+    def test_backup_startup_is_retried(self):
+        with patch.object(creation.time,'sleep') as sleep, Stubber(self.client) as stub:
+            stub.add_client_error('update_continuous_backups','ContinuousBackupsUnavailableException')
+            stub.add_response('update_continuous_backups',{})
+            creation.enable_recovery(self.client,'ledger')
+            sleep.assert_called_once_with(3)
+            stub.assert_no_pending_responses()
+
+    def test_rerun_repairs_existing_standalone_table(self):
+        waiter=Mock()
+        with patch.object(self.client,'get_waiter',return_value=waiter), Stubber(self.client) as stub:
+            stub.add_response('describe_table',{'Table':self.table})
+            stub.add_response('update_continuous_backups',{})
+            self.assertFalse(creation.ensure_table(self.client,'ledger',repair_recovery=True))
+            waiter.wait.assert_called_once()
+            stub.assert_no_pending_responses()
+
+    def test_backup_permission_error_is_not_retried(self):
+        with patch.object(creation.time,'sleep') as sleep, Stubber(self.client) as stub:
+            stub.add_client_error('update_continuous_backups','AccessDeniedException')
+            with self.assertRaises(creation.ClientError):
+                creation.enable_recovery(self.client,'ledger')
+            sleep.assert_not_called()
+
 
 if __name__ == '__main__':
     unittest.main()

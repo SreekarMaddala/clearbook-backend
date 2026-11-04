@@ -120,7 +120,7 @@ def normalized_transaction(db, body):
 def rebuild_allocations(db):
     """Rebuild FIFO matches atomically, with repayments limited to funding on/before their date."""
     db.replace('repayment_allocations', {})
-    external = {a['id'] for a in [a for a in db.all('accounts') if a['type'] == 'THIRD_PARTY_CREDITOR']}
+    external = {a['id'] for a in db.all('accounts') if a['type'] == 'THIRD_PARTY_CREDITOR'}
     funding = {key: [] for key in external}
     active = sorted((t for t in db.all('transactions') if not t.get('reversed_at')), key=lambda t: (t['date'], t['type'] == 'PAYBACK', t['created_at'], t['id']))
     for row in active:
@@ -141,7 +141,7 @@ def rebuild_allocations(db):
 
 
 def serialize_transactions(db, include_reversed=False):
-    external = {a['id'] for a in [a for a in db.all('accounts') if a['type'] == 'THIRD_PARTY_CREDITOR']}
+    external = {a['id'] for a in db.all('accounts') if a['type'] == 'THIRD_PARTY_CREDITOR'}
     allocations = db.all('repayment_allocations')
     by_funding, by_repayment = {}, {}
     for allocation in allocations:

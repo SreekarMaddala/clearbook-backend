@@ -1,3 +1,25 @@
+# Provider/customer update pending deployment
+
+See [provider access](README.md#provider-and-customer-access) before deploying this source. `SUPER_ADMIN` is now the software provider and cannot access customer ledgers. Create customers and users through the provider UI after both deployments. The old `--add-user` command has been removed. Existing users require customer membership; existing ledger records are preserved. Deployment details below include historical behavior.
+
+# Current deployment configuration: use existing tables
+
+The current SAM template uses the five manually created `clearbook-accounts`, `clearbook-vendors`, `clearbook-categories`, `clearbook-transactions`, and `clearbook-repayment_allocations` tables. It does not create or import DynamoDB table resources. The previous update failed because the original SAM-managed LedgerTable was manually deleted. That reference is now removed. The Cognito resources remain unchanged.
+
+From the backend repository:
+
+```powershell
+python scripts/create-table.py --table-name clearbook --initialize-categories
+python scripts/build-backend.py
+sam deploy --no-confirm-changeset
+python scripts/bootstrap-backend.py
+python scripts/verify-backend.py
+```
+
+Run each command only after the previous command succeeds. The five table-name parameters default to the exact names above. Inspect the change set before deployment if you have customized those names. No legacy migration is required if you deliberately deleted the original data and are starting fresh. Do not delete any retained rollback tables until their contents have been checked. This change has only been checked locally; live redeployment is still required. Historical migration/deployment notes below are superseded by this section.
+
+---
+
 # Five-table correction pending deployment
 
 The backend now defines five separate physical DynamoDB tables: accounts, vendors, categories, transactions, and repayment_allocations. This correction is tested locally but has not been applied to AWS. See [migration and deployment status](../FIVE_TABLE_MIGRATION.md). The historical deployment details below describe the prior single-table release.
@@ -38,7 +60,7 @@ Default CORS origins: http://localhost:5173 and http://127.0.0.1:5173. Cognito c
 
 For the eventual Vercel deployment, set SAM parameters `AllowedOrigin` and `CallbackUrl` to the exact Vercel origin and callback. No wildcard origins are used. The app client has 15-minute access tokens and seven-day refresh tokens. API Gateway validates JWTs locally, so previously issued access tokens can remain usable until expiry after logout/revocation.
 
-## Initialize categories and provision the two users
+## Initialize the backend and configure the provider account
 
 ```powershell
 python -m pip install -r scripts/requirements.txt
@@ -53,18 +75,12 @@ The deployed initial account is `sreekarmaddala9999@gmail.com`, attached to the 
 python scripts/bootstrap-backend.py --set-admin-password
 ```
 
-The second user is left for you to configure:
+Customer users are now managed in the provider UI; see [provider access](README.md#provider-and-customer-access).
 
-```powershell
-python scripts/bootstrap-backend.py --add-user SECOND_USER_EMAIL
-```
-
-Both commands prompt for a masked password. Passwords remain in process memory and are never put in command arguments, files, logs or chat. Administrators should verify the second user's email ownership before provisioning. Adding a user does not replace an existing confirmed user's password. The helper enforces the current two-user setup; further membership changes can be managed explicitly in Cognito. The `SUPER_ADMIN` group is an application role, not permission to administer AWS through the browser. The 12 ledger routes allow authenticated workspace members; user-management HTTP endpoints and frontend administration screens are not part of this backend step.
-
-Use `--profile PROFILE` for a named AWS profile. The IAM identity needs permission to describe the stack, invoke the reference function and (when requested) manage users in this pool. Do not grant those administrator permissions to the browser app.
+Use `--profile PROFILE` for a named AWS profile. The IAM identity needs permission to describe the stack and invoke the reference function. Set up the provider password with the administrative Cognito access described above. Customer users are created in the provider UI after deployment; browser users receive no AWS permissions.
 
 ## Local frontend
 
-Run `python -m backend.server --seed-demo` for the local API at http://127.0.0.1:8000; start the frontend from its separate repository. This keeps offline development available through the local document adapter. To connect to the deployed API later, change `apiBase` in the frontend repository's `config.js` to the returned `ApiBaseUrl` and supply a scoped Cognito access token. The existing client reads `sessionStorage['clearbook-access-token']`. No frontend login flow or Vercel deployment is performed in this backend step.
+Run `python -m backend.server --seed-demo` for the local API at http://127.0.0.1:8000; start the frontend from its separate repository. This keeps offline development available through the local document adapter. The frontend repository configures its public API base and Cognito login flow. Deploy it through the existing Amplify pipeline with the matching API origin and Cognito callback. Do not store AWS credentials or customer data in frontend source.
 
 See [README.md](README.md) for the data model, transaction bounds, API contract and verification. The retained DynamoDB table and Cognito pool are preserved when the stack is deleted; assess stored data before any separate removal.
