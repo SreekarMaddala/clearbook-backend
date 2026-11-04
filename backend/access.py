@@ -1,4 +1,4 @@
-"""Provider membership and customer isolation, checked on every hosted request."""
+"""Resolve provider accounts and customer workspace membership."""
 import json
 
 try:
@@ -25,9 +25,9 @@ def identity(claims):
     with workspace_scope(PLATFORM_WORKSPACE), connection() as db:
         member = db.get('accounts', 'user#' + claims['sub'])
         if not member or not member.get('enabled'):
-            raise APIError('Your account has no active customer access. Contact your software provider.', 403)
-        customer = db.get('accounts', 'customer#' + member['customer_id'])
-        if not customer or not customer.get('enabled'):
-            raise APIError('Your customer workspace is disabled. Contact your software provider.', 403)
+            raise APIError('Your account has no active organization access. Contact your software provider.', 403)
+        organization = db.get('accounts', 'customer#' + member['customer_id'])
+        if not organization or not organization.get('enabled'):
+            raise APIError('Your organization is disabled. Contact your software provider.', 403)
         return {'role': 'customer', 'name': member['email'],
-                'workspace': {'id': customer['id'], 'name': customer['name']}}
+                'workspace': {'id': organization['id'], 'name': organization['name']}}

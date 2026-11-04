@@ -1,26 +1,26 @@
 # Provider and customer access pending deployment
 
-The source separates software-provider management from customer ledgers. Deploy the backend and frontend together; see [deployment instructions](DEPLOYMENT.md). Existing shared ledger data is preserved and is not automatically assigned to a customer. The hosted changes have not been deployed.
+The source separates software-provider management from organization ledgers. The provider onboards organizations and up to two users for each organization; it cannot read the ledgers. Deploy the backend and frontend together; see [deployment instructions](DEPLOYMENT.md). Existing shared ledger data is preserved and is not automatically assigned to a customer. The hosted changes have not been deployed.
 
-`SUPER_ADMIN` means **software provider**. Providers manage customers and customer users. Provider accounts cannot access business accounts, vendors, transactions, categories or dashboard totals. Customers see the business app for their own workspace.
+`SUPER_ADMIN` means **software provider**. Providers onboard organizations and their users. Provider accounts cannot access business accounts, vendors, transactions, categories or dashboard totals. Customers see the business app for their own workspace.
 
 ## Provider dashboard
 
-Sign in with the existing provider account. **Customers ? Add customer** creates an empty customer workspace and its 11 categories. **Users ? Add user** links an email to a customer. New Cognito users receive a temporary password and must change it at first sign-in. Share it privately; Cognito invitations are suppressed. Existing Cognito users keep their password. A user already assigned to a different customer cannot be moved through this API, and provider accounts cannot be assigned as customer users.
+Sign in with the existing provider account. **Organizations / Onboard organization** creates an empty organization workspace and its 11 categories. **Users / Add user** links an email to that organization. Each organization has at most two customer users. New Cognito users receive a temporary password and must change it at first sign-in. Share it privately; Cognito invitations are suppressed. Existing Cognito users keep their password. A user already assigned to a different organization cannot be moved through this API, and provider accounts cannot be assigned as customer users.
 
 Disable controls update server-side membership. Disabling a user or customer blocks access on their next API request. Accounts without active membership, including users created by previous setup scripts, cannot load ledger data.
 
 ## Storage and authorization
 
-The existing five DynamoDB tables and three Lambdas are retained. Each customer uses a server-generated `WORKSPACE#customer-<uuid>` partition. Provider registry records use `WORKSPACE#__provider__`. Both are account documents in different partitions; ledger routes cannot return provider records.
+The existing five DynamoDB tables and three Lambdas are retained. Each organization uses a server-generated `WORKSPACE#customer-<uuid>` partition. Provider organization and membership records use `WORKSPACE#__provider__`. Both are account documents in different partitions; ledger routes cannot return provider records.
 
 `GET /api/session` resolves the signed-in user. Membership is keyed by Cognito subject, not a client-supplied email. Every hosted request checks membership and customer status before selecting a workspace. Body fields, query parameters and URL fragments cannot select a tenant. API Gateway continues to validate the Cognito token and scope.
 
-Existing `WORKSPACE#clearbook` records are preserved and are **not automatically assigned** to a new customer. New customers start with empty ledgers. Assigning existing business data requires a separate, explicitly reviewed migration. Loopback development remains an unauthenticated demo ledger.
+Existing `WORKSPACE#clearbook` records are preserved and are **not automatically assigned** to a new customer. New organizations start with empty ledgers. Assigning existing business data requires a separate, explicitly reviewed migration. Loopback development remains an unauthenticated demo ledger.
 
 ## Provider API additions
 
-All paths start with `/api`. The 12 ledger endpoints listed below require active customer membership. Seven endpoints are served by the reference Lambda:
+All paths start with `/api`. The 12 ledger endpoints listed below require an active organization membership. Seven endpoints are served by the reference Lambda:
 
 | Method | Path | Access |
 | --- | --- | --- |
@@ -54,7 +54,7 @@ Production storage is **Amazon DynamoDB in Hyderabad (`ap-south-2`)**. There is 
 - Cognito User Pool with public signup disabled. API Gateway validates access tokens and the `clearbook/ledger` scope. Handlers enforce software-provider or customer membership for every request.
 - The browser frontend uses Cognito sign-in and supports separate provider and customer views; the source update is pending deployment.
 
-Customer ledger items use `PK = WORKSPACE#<customer-id>` and `SK = <entity>#<record-id>`. Provider registry items use the reserved `WORKSPACE#__provider__` partition. A `META` item stores the ledger revision. Items are separate DynamoDB records, not one giant ledger document. The workspace snapshot design is intended for this small, two-user app. It currently loads the workspace with paginated strongly consistent Query operations; query/index-based projections should replace whole-workspace loads for a large ledger.
+Customer ledger items use `PK = WORKSPACE#<customer-id>` and `SK = <entity>#<record-id>`. Provider registry items use the reserved `WORKSPACE#__provider__` partition. A `META` item stores the ledger revision. Items are separate DynamoDB records, not one giant ledger document. Organization workspaces can each have up to two customer users. It currently loads the workspace with paginated strongly consistent Query operations; query/index-based projections should replace whole-workspace loads for a large ledger.
 
 ## Accounting and concurrency
 

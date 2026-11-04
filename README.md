@@ -1,6 +1,6 @@
 # Provider/customer separation pending deployment
 
-The source adds separate software-provider and customer access. The provider dashboard manages customers and users; customers receive separate ledgers. Deployment and security details are in [backend/README.md](backend/README.md#provider-and-customer-access). Existing shared ledger data is preserved and is not automatically assigned to a customer.
+The source adds separate software-provider and organization-user access. The provider dashboard onboards organizations and assigns up to two users to each organization; each organization receives an isolated ledger. Deployment and security details are in [backend/README.md](backend/README.md#provider-and-customer-access). Existing shared ledger data is preserved and is not automatically assigned to an organization.
 
 # Five-table correction pending deployment
 

@@ -1,6 +1,6 @@
 # Provider/customer update pending deployment
 
-See [provider access](README.md#provider-and-customer-access) before deploying this source. `SUPER_ADMIN` is now the software provider and cannot access customer ledgers. Create customers and users through the provider UI after both deployments. The old `--add-user` command has been removed. Existing users require customer membership; existing ledger records are preserved. Deployment details below include historical behavior.
+See [provider access](README.md#provider-and-customer-access) before deploying this source. `SUPER_ADMIN` is the software provider and cannot access organization ledgers. Onboard organizations and up to two users per organization through the provider UI after both deployments. The old `--add-user` command has been removed. Existing users require organization membership; existing ledger records are preserved. Deployment details below include historical behavior.
 
 # Current deployment configuration: use existing tables
 
@@ -75,7 +75,7 @@ The deployed initial account is `sreekarmaddala9999@gmail.com`, attached to the 
 python scripts/bootstrap-backend.py --set-admin-password
 ```
 
-Customer users are now managed in the provider UI; see [provider access](README.md#provider-and-customer-access).
+Organization users are now managed in the provider UI; see [provider access](README.md#provider-and-customer-access).
 
 Use `--profile PROFILE` for a named AWS profile. The IAM identity needs permission to describe the stack and invoke the reference function. Set up the provider password with the administrative Cognito access described above. Customer users are created in the provider UI after deployment; browser users receive no AWS permissions.
 
