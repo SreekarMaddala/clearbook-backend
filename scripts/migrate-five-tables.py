@@ -1,6 +1,6 @@
 """Move legacy entity documents to their dedicated tables in one atomic operation.
 
-Run after deploying the five-table template. Default is read-only; --apply writes.
+Run after deploying the entity-table template (including clients). Default is read-only; --apply writes.
 Keep application writes paused until migration succeeds. No business record is
 deleted: each source removal is atomic with its destination creation.
 """
@@ -14,7 +14,7 @@ import boto3
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from backend.database import DynamoStore
 
-OUTPUTS = {'accounts':'AccountsTableName', 'vendors':'VendorsTableName',
+OUTPUTS = {'locations':'CategoriesTableName', 'clients':'ClientsTableName', 'accounts':'AccountsTableName', 'vendors':'VendorsTableName',
            'categories':'CategoriesTableName', 'transactions':'TransactionsTableName',
            'repayment_allocations':'RepaymentAllocationsTableName'}
 

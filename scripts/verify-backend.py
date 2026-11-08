@@ -29,7 +29,7 @@ def main():
         raise RuntimeError('Unexpected deployment region.')
     resources = session.client('cloudformation').list_stack_resources(StackName='clearbook-hyderabad')['StackResourceSummaries']
     assert sum(r['ResourceType']=='AWS::Lambda::Function' for r in resources) == 3
-    assert sum(r['ResourceType']=='AWS::DynamoDB::Table' for r in resources) == 0  # Five existing external tables.
+    assert sum(r['ResourceType']=='AWS::DynamoDB::Table' for r in resources) == 0  # Six existing external tables.
     assert not any(r['ResourceType'].startswith('AWS::RDS::') for r in resources)
     client = session.client('lambda')
     claims = {'sub':'deployment-verifier','token_use':'access','scope':'openid clearbook/ledger','cognito:groups':['SUPER_ADMIN']}
@@ -58,8 +58,8 @@ def main():
     assert len(routes)==19
     assert all(r.get('AuthorizationType')=='JWT' and 'clearbook/ledger' in r.get('AuthorizationScopes',[]) for r in routes)
     print('PASS: all 19 live routes require scoped JWT authentication.')
-    tables={entity:outputs[key] for entity,key in {'accounts':'AccountsTableName','vendors':'VendorsTableName','categories':'CategoriesTableName','transactions':'TransactionsTableName','repayment_allocations':'RepaymentAllocationsTableName'}.items()}
-    assert len(set(tables.values()))==5
+    tables={entity:outputs[key] for entity,key in {'clients':'ClientsTableName','accounts':'AccountsTableName','vendors':'VendorsTableName','categories':'CategoriesTableName','transactions':'TransactionsTableName','repayment_allocations':'RepaymentAllocationsTableName'}.items()}
+    assert len(set(tables.values()))==6
     for table in tables.values():
         assert session.client('dynamodb').describe_table(TableName=table)['Table']['TableStatus']=='ACTIVE'
     os.environ['DYNAMODB_TABLES']=json.dumps(tables)

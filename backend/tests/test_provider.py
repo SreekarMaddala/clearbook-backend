@@ -68,6 +68,18 @@ class ProviderTest(unittest.TestCase):
         self.assertEqual(len(users),2)
         self.assertEqual({user['customer_id'] for user in users},{self.a['id'],self.b['id']})
 
+    def test_custom_categories_are_validated_and_isolated(self):
+        status, category = self.call('POST','/categories',{'name':' Office supplies '},subject='alice')
+        self.assertEqual(status,201)
+        self.assertEqual(category['name'],'Office supplies')
+        self.assertIn('Office supplies',[c['name'] for c in self.call('GET','/categories',subject='alice')[1]['items']])
+        self.assertNotIn('Office supplies',[c['name'] for c in self.call('GET','/categories',subject='bob')[1]['items']])
+        self.assertEqual(self.call('POST','/categories',{'name':'office SUPPLIES'},subject='alice')[0],409)
+        for name in ['', '   ', 'a'*81, None]:
+            self.assertEqual(self.call('POST','/categories',{'name':name},subject='alice')[0],400)
+        self.assertEqual(self.call('POST','/categories',{'name':'Fuel'},subject='alice')[0],409)
+        self.assertEqual(self.call('POST','/categories',{'name':'Office supplies'},subject='bob')[0],201)
+
     def test_transactions_and_dashboard_totals_are_isolated(self):
         account=self.call('POST','/accounts',{'name':'A bank','owner':'A','type':'INTERNAL'},subject='alice')[1]
         status,transaction=self.call('POST','/transactions',{'type':'EXPENSE','date':'2026-11-04','amount':'123.45','payer':account['id'],'category':'Fuel','mode':'UPI','location':'Organization A site'},subject='alice',group='transactions')
@@ -76,6 +88,26 @@ class ProviderTest(unittest.TestCase):
         self.assertEqual(self.call('PATCH','/transactions/'+transaction['id'],{'version':1,'amount':'1'},subject='bob',group='transactions')[0],404)
         self.assertEqual(self.call('GET','/dashboard',subject='alice',group='dashboard')[1]['totals']['expenses'],123.45)
         self.assertEqual(self.call('GET','/dashboard',subject='bob',group='dashboard')[1]['totals']['expenses'],0)
+
+    def test_clients_and_credits_are_isolated(self):
+        account = self.call('POST','/accounts',{'name':'Bank','owner':'A','type':'INTERNAL'},subject='alice')[1]
+        client = self.call('POST','/clients',{'name':'ABC','workspace_id':self.b['id']},subject='alice')[1]
+        self.assertEqual(self.call('GET','/clients',subject='bob')[1]['items'],[])
+        self.assertEqual(self.call('PATCH','/clients/'+client['id'],{'name':'Stolen'},subject='bob')[0],404)
+        body = {'type':'CREDIT','date':'2026-11-04','amount':'100','client_id':client['id'],
+                'recipient':account['id'],'mode':'UPI','location':'Office'}
+        self.assertEqual(self.call('POST','/transactions',body,subject='alice',group='transactions')[0],201)
+        self.assertEqual(self.call('POST','/transactions',body,subject='bob',group='transactions')[0],404)
+        self.assertEqual(self.call('GET','/dashboard',subject='alice',group='dashboard')[1]['totals']['credits'],100)
+        self.assertEqual(self.call('GET','/dashboard',subject='bob',group='dashboard')[1]['totals']['credits'],0)
+        self.assertEqual(self.call('POST','/clients',{'name':'Provider client'})[0],403)
+
+    def test_locations_are_isolated(self):
+        self.assertEqual(self.call('POST','/locations',{'name':'Private site'},subject='alice')[0],201)
+        self.assertEqual(self.call('GET','/locations',subject='alice')[1]['items'],[{'name':'Private site'}])
+        self.assertEqual(self.call('GET','/locations',subject='bob')[1]['items'],[])
+        self.assertEqual(self.call('POST','/locations',{'name':'Private site'},subject='bob')[0],201)
+        self.assertEqual(self.call('POST','/locations',{'name':'Private site'})[0],403)
 
     def test_disabling_an_org_blocks_its_users(self):
         self.assertEqual(self.call('PATCH','/provider/customers/'+self.a['id'],{'enabled':False})[0],200)

@@ -1,6 +1,7 @@
 import copy
 import hashlib
 import json
+import re
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from uuid import uuid4
@@ -40,7 +41,7 @@ def paise(value):
 
 
 def get_reference(db, table, key):
-    if table not in ('accounts', 'vendors', 'categories'):
+    if table not in ('accounts', 'vendors', 'categories', 'clients'):
         raise APIError('Unknown resource.', 404)
     if not isinstance(key, str) or not key.strip() or len(key) > 120:
         raise APIError(f'Choose a valid {table[:-1]}.')
@@ -52,9 +53,32 @@ def get_reference(db, table, key):
 
 def reference(method, resource, record_id=None, body=None):
     with connection(write=method != 'GET') as db:
+        if resource == 'locations':
+            # Include historical free-text locations without rewriting transactions.
+            names = {row['name'].casefold(): row['name'] for row in db.all('locations')}
+            for row in db.all('transactions'):
+                name = (row.get('location') or '').strip()
+                if name:
+                    names.setdefault(name.casefold(), name)
+            if method == 'GET':
+                return {'items': [{'name': name} for name in sorted(names.values(), key=str.casefold)]}
+            name = text((body or {}).get('name'), 'Location name', 200)
+            if name.casefold() in names:
+                raise APIError('That location already exists.', 409)
+            record = {'name': name}
+            db.put('locations', str(uuid4()), record)
+            return record
         if method == 'GET':
             return {'items': sorted(db.all(resource), key=lambda r: r['sort_order'] if resource == 'categories' else r['name'])}
         body = body or {}
+        if resource == 'categories':
+            name = text(body.get('name'), 'Category name', 80)
+            rows = db.all('categories')
+            if any(row['name'].casefold() == name.casefold() for row in rows):
+                raise APIError('That category already exists.', 409)
+            category = {'name': name, 'sort_order': max((row['sort_order'] for row in rows), default=-1) + 1}
+            db.put('categories', name, category)
+            return category
         existing = get_reference(db, resource, record_id) if record_id else {}
         data = {**existing, **body}
         name = text(data.get('name'), 'Name', 120)
@@ -65,6 +89,12 @@ def reference(method, resource, record_id=None, body=None):
             if existing and kind != existing['type'] and any(t['payer'] == record_id or t.get('recipient') == record_id for t in db.all('transactions')):
                 raise APIError('An account used in transactions cannot change ownership type.', 409)
             values = {'name': name, 'type': kind, 'owner': text(data.get('owner'), 'Owner'), 'detail': text(data.get('detail', ''), 'Description', 500, False)}
+        elif resource == 'clients':
+            email = text(data.get('email', ''), 'Email', 254, False)
+            if email and not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', email):
+                raise APIError('Enter a valid email address.')
+            values = {'name': name, 'contact': text(data.get('contact', ''), 'Contact person', 120, False),
+                      'phone': text(data.get('phone', ''), 'Phone', 40, False), 'email': email}
         else:
             category = text(data.get('category'), 'Category', 80)
             get_reference(db, 'categories', category)
@@ -79,19 +109,29 @@ def reference(method, resource, record_id=None, body=None):
 
 def normalized_transaction(db, body):
     kind = body.get('type')
-    if kind not in ('EXPENSE', 'PAYBACK', 'TRANSFER'):
-        raise APIError('Choose Expense, Payback, or Transfer.')
+    if kind not in ('EXPENSE', 'PAYBACK', 'TRANSFER', 'CREDIT'):
+        raise APIError('Choose Expense, Payback, or Credit.')
     day = body.get('date')
     try:
         if not isinstance(day, str) or date.fromisoformat(day).isoformat() != day:
             raise ValueError
     except (ValueError, TypeError):
         raise APIError('Payment date must be a valid YYYY-MM-DD date.')
-    payer = get_reference(db, 'accounts', body.get('payer'))
+    payer = None if kind == 'CREDIT' else get_reference(db, 'accounts', body.get('payer'))
+    client_id = body.get('client_id') or None
     vendor = body.get('vendor') or None
     recipient = body.get('recipient') or None
     category = body.get('category') or None
-    if kind == 'EXPENSE':
+    if kind == 'CREDIT':
+        if body.get('payer') or vendor or category:
+            raise APIError('Credits use a client and receiving account, without a payer, vendor or expense category.')
+        get_reference(db, 'clients', client_id)
+        destination = get_reference(db, 'accounts', recipient)
+        if destination['type'] != 'INTERNAL':
+            raise APIError('Credits must be received into a business account.')
+    elif client_id:
+        raise APIError('Only credits can reference a client.')
+    elif kind == 'EXPENSE':
         if recipient:
             raise APIError('Expenses do not use a destination account.')
         get_reference(db, 'categories', category)
@@ -111,7 +151,7 @@ def normalized_transaction(db, body):
     if mode not in ('UPI', 'NEFT', 'RTGS', 'IMPS', 'CASH', 'CHEQUE'):
         raise APIError('Invalid payment mode.')
     return {'date': day, 'amount_paise': paise(body.get('amount')), 'type': kind,
-            'payer': payer['id'], 'vendor': vendor, 'recipient': recipient, 'category': category,
+            'payer': payer['id'] if payer else None, 'client_id': client_id, 'vendor': vendor, 'recipient': recipient, 'category': category,
             'mode': mode, 'location': text(body.get('location'), 'Location', 200),
             'notes': text(body.get('notes', ''), 'Notes', 1000, False),
             'receipt_name': text(body['receiptName'], 'Receipt filename', 255) if body.get('receiptName') else None}
@@ -156,6 +196,8 @@ def serialize_transactions(db, include_reversed=False):
         allocated = by_funding.get(row['id'], 0)
         if row['reversed_at']:
             status = ['reversed', 'Reversed']
+        elif row['type'] == 'CREDIT':
+            status = ['received', 'Received']
         elif row['type'] == 'PAYBACK':
             status = ['paid', 'Repaid']
         elif row['payer'] in external:
@@ -192,7 +234,9 @@ def write_transaction(method, body, record_id=None, key=None, actor='local-admin
         else:
             merged = {**existing, 'amount': str(Decimal(existing['amount_paise']) / 100), 'receiptName': existing['receipt_name'], **body} if existing else body
             values = normalized_transaction(db, merged)
-            digest = hashlib.sha256(json.dumps(values, sort_keys=True).encode()).hexdigest()
+            # Preserve hashes for retries of transactions created before clients existed.
+            hash_values = {k:v for k,v in values.items() if k != 'client_id' or v is not None}
+            digest = hashlib.sha256(json.dumps(hash_values, sort_keys=True).encode()).hexdigest()
             if not record_id:
                 key = text(key, 'Idempotency-Key header', 128)
                 duplicate = next((t for t in db.all('transactions') if t.get('idempotency_key') == key), None)
@@ -224,9 +268,12 @@ def transaction_list(query):
         rows = serialize_transactions(db, query.get('include_reversed') == 'true')
         names = {a['id']:a['name'] for a in db.all('accounts')}
         vendors = {a['id']:a['name'] for a in db.all('vendors')}
-        for field in ('payer', 'vendor', 'category', 'location', 'type'):
+        clients = {a['id']:a['name'] for a in db.all('clients')}
+        for field in ('payer', 'recipient', 'client_id', 'vendor', 'category', 'location', 'type'):
             if query.get(field):
                 rows = [t for t in rows if t.get(field) == query[field]]
+        if query.get('account'):
+            rows = [t for t in rows if query['account'] in (t.get('payer'), t.get('recipient'))]
         if query.get('from'):
             rows = [t for t in rows if t['date'] >= query['from']]
         if query.get('to'):
@@ -235,7 +282,7 @@ def transaction_list(query):
             rows = [t for t in rows if t['status'][0] == query['status']]
         if query.get('q'):
             needle = query['q'].lower()
-            rows = [t for t in rows if needle in ' '.join(str(x or '') for x in (t['notes'], t['location'], t['category'], t['mode'], t['amount'], names.get(t['payer']), names.get(t['recipient']), vendors.get(t['vendor']))).lower()]
+            rows = [t for t in rows if needle in ' '.join(str(x or '') for x in (t['location'], t['category'], t['mode'], t['amount'], names.get(t['payer']), names.get(t['recipient']), vendors.get(t['vendor']), clients.get(t.get('client_id')))).lower()]
         return {'items':rows[(page-1)*limit:page*limit], 'total':len(rows), 'page':page, 'limit':limit}
 
 
@@ -252,5 +299,17 @@ def dashboard():
         repaid_paise = sum(t['amount_paise'] for t in rows if t['type'] == 'PAYBACK')
         amounts = {'expenses':sum(t['amount_paise'] for t in rows if t['type']=='EXPENSE')/100,
                    'fronted':funded_paise/100, 'settled':repaid_paise/100,
-                   'outstanding':(funded_paise-repaid_paise)/100}
-        return {'totals':amounts, 'creditors':creditors, 'generated_at':now()}
+                   'outstanding':(funded_paise-repaid_paise)/100,
+                   'credits':sum(t['amount_paise'] for t in rows if t['type']=='CREDIT')/100}
+        accounts = []
+        for account in db.all('accounts'):
+            if account['type'] != 'INTERNAL':
+                continue
+            incoming = sum(t['amount_paise'] for t in rows if t.get('recipient') == account['id'] and t['type'] in ('CREDIT','TRANSFER'))
+            outgoing = sum(t['amount_paise'] for t in rows if t.get('payer') == account['id'])
+            credits = sum(t['amount_paise'] for t in rows if t.get('recipient') == account['id'] and t['type']=='CREDIT')
+            accounts.append({'id':account['id'], 'incoming':incoming/100, 'credits':credits/100,
+                             'outgoing':outgoing/100, 'net_movement':(incoming-outgoing)/100})
+        clients = [{'id':c['id'], 'received':sum(t['amount_paise'] for t in rows if t['type']=='CREDIT' and t.get('client_id')==c['id'])/100}
+                   for c in db.all('clients')]
+        return {'totals':amounts, 'creditors':creditors, 'accounts':accounts, 'clients':clients, 'generated_at':now()}

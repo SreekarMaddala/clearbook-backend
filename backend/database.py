@@ -1,4 +1,4 @@
-"""DynamoDB five-table document storage; local JSON adapter for offline development."""
+"""DynamoDB entity document storage; local JSON adapter for offline development."""
 import copy
 import json
 import os
@@ -12,7 +12,7 @@ from uuid import uuid4
 ROOT = Path(__file__).resolve().parent
 CATEGORIES = ['Fuel', 'Food', 'Porter', 'Labour Transport', 'Power Tools', 'Toll',
               'Machinery Repair', 'Machinery Purchase', 'Other Expense', 'Labour Tips', 'Sub Contractor']
-ENTITIES = ('accounts', 'vendors', 'categories', 'transactions', 'repayment_allocations')
+ENTITIES = ('accounts', 'vendors', 'categories', 'transactions', 'repayment_allocations', 'clients', 'locations')
 _LOCAL_LOCK = threading.RLock()
 _WORKSPACE = ContextVar('clearbook_workspace', default=None)
 PLATFORM_WORKSPACE = '__provider__'
@@ -73,8 +73,12 @@ class DynamoStore:
         from boto3.dynamodb.types import TypeDeserializer, TypeSerializer
         self.client = client or boto3.client('dynamodb', region_name=os.environ.get('AWS_REGION', 'ap-south-2'))
         self.tables = dict(table) if isinstance(table, dict) else {entity: table for entity in ENTITIES}
+        # Locations share the categories table with a separate entity/SK prefix.
+        # Existing six-table deployments need no new table or environment setting.
+        if 'locations' not in self.tables and 'categories' in self.tables:
+            self.tables['locations'] = self.tables['categories']
         if set(self.tables) != set(ENTITIES):
-            raise ValueError('Exactly five entity-to-table mappings are required.')
+            raise ValueError('Mappings for accounts, vendors, categories, transactions, repayment_allocations and clients are required.')
         self.table = self.tables['accounts']  # Workspace revision lives with accounts.
         self.legacy = len(set(self.tables.values())) == 1
         self.pk = 'WORKSPACE#' + (_WORKSPACE.get() or os.environ.get('WORKSPACE_ID', 'clearbook'))
@@ -178,6 +182,8 @@ def _local_state(write):
             fcntl.flock(lock, fcntl.LOCK_EX)
         try:
             state = json.loads(path.read_text(encoding='utf-8')) if path.exists() else empty_state()
+            for entity in ENTITIES:
+                state.setdefault(entity, {})
             original = copy.deepcopy(state)
             yield Documents(state)
             if write and state != original:

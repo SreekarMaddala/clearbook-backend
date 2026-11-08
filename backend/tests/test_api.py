@@ -49,17 +49,84 @@ class APITest(unittest.TestCase):
         return {'date':'2026-11-02','amount':amount,'type':'PAYBACK','payer':self.business['id'],
                 'recipient':self.creditor['id'],'mode':'NEFT','location':'Hyderabad office', **changes}
 
+    def test_client_credit_lifecycle_and_account_movement(self):
+        client = self.create('/clients', {'name':'ABC', 'email':'abc@example.com'})
+        body = {'date':'2026-11-04', 'amount':'500.25', 'type':'CREDIT',
+                'client_id':client['id'], 'recipient':self.business['id'], 'mode':'UPI', 'location':'Office'}
+        key = str(uuid4())
+        credit = self.create('/transactions', body, key)
+        self.assertEqual(self.create('/transactions', body, key)['id'], credit['id'])
+        self.assertEqual(credit['status'], ['received','Received'])
+        self.assertIsNone(credit['payer'])
+        self.assertEqual(credit['allocations'], [])
+        totals = self.call('GET','/dashboard')[1]
+        self.assertEqual(totals['totals']['credits'],500.25)
+        self.assertEqual(totals['totals']['expenses'],0)
+        self.assertEqual(totals['totals']['outstanding'],0)
+        self.assertEqual(totals['accounts'][0]['net_movement'],500.25)
+        self.assertEqual(totals['clients'][0]['received'],500.25)
+        rows = self.call('GET','/transactions',query={'client_id':client['id'],'account':self.business['id']})[1]['items']
+        self.assertEqual([t['id'] for t in rows],[credit['id']])
+        self.assertEqual(len(self.call('GET','/transactions',query={'q':'ABC'})[1]['items']),1)
+        status, updated = self.call('PATCH','/transactions/'+credit['id'],{'amount':'700','version':1})
+        self.assertEqual(status,200,updated)
+        self.assertEqual(updated['amount'],700)
+        self.assertEqual(self.call('PATCH','/transactions/'+credit['id'],{'amount':'900','version':1})[0],409)
+        self.assertEqual(self.call('POST','/transactions/'+credit['id']+'/reverse',{'reason':'Test','version':2})[0],200)
+        self.assertEqual(self.call('GET','/dashboard')[1]['totals']['credits'],0)
+        self.assertEqual(self.call('GET','/dashboard')[1]['accounts'][0]['net_movement'],0)
+
+    def test_credit_and_client_validation(self):
+        client = self.create('/clients', {'name':'ABC'})
+        self.assertEqual(self.call('POST','/clients',{'name':' abc '})[0],409)
+        self.assertEqual(self.call('POST','/clients',{'name':'Invalid','email':'bad'})[0],400)
+        status, updated = self.call('PATCH','/clients/'+client['id'],{'contact':'A person'})
+        self.assertEqual(status,200)
+        self.assertEqual(updated['name'],'ABC')
+        self.assertEqual(updated['contact'],'A person')
+        body = {'date':'2026-11-04','amount':'500','type':'CREDIT','client_id':client['id'],
+                'recipient':self.business['id'],'mode':'UPI','location':'Office'}
+        for changes in ({'client_id':None},{'client_id':'missing'},{'recipient':self.creditor['id']},
+                        {'payer':self.business['id']},{'vendor':self.vendor['id']},{'category':'Fuel'},
+                        {'amount':0},{'amount':'1.001'},{'recipient':None}):
+            self.assertIn(self.call('POST','/transactions',{**body,**changes})[0],(400,404))
+        self.assertEqual(self.call('POST','/transactions',self.expense(client_id=client['id']))[0],400)
+
+    def test_existing_local_store_without_clients_is_upgraded(self):
+        path = Path(os.environ['LOCAL_DATA_PATH'])
+        state = json.loads(path.read_text(encoding='utf-8'))
+        state.pop('clients', None)
+        path.write_text(json.dumps(state),encoding='utf-8')
+        self.assertEqual(self.call('GET','/clients')[1]['items'],[])
+        self.create('/clients',{'name':'New client'})
+        updated = json.loads(path.read_text(encoding='utf-8'))
+        self.assertEqual(updated['accounts'],state['accounts'])
+        self.assertEqual(updated['vendors'],state['vendors'])
+        self.assertEqual(len(updated['clients']),1)
+
+    def test_saved_and_historical_locations(self):
+        self.assertEqual(self.call('GET','/locations')[1]['items'],[])
+        saved = self.create('/locations',{'name':' New site '})
+        self.assertEqual(saved,{'name':'New site'})
+        self.assertEqual(self.call('POST','/locations',{'name':'new SITE'})[0],409)
+        for name in ['', '   ', 'x'*201, None]:
+            self.assertEqual(self.call('POST','/locations',{'name':name})[0],400)
+        self.create('/transactions',self.expense(location='Historical site'))
+        self.assertEqual(self.call('GET','/locations')[1]['items'],[{'name':'Historical site'},{'name':'New site'}])
+        self.assertEqual(self.call('POST','/locations',{'name':'historical SITE'})[0],409)
+        self.assertEqual(len(self.call('GET','/categories')[1]['items']),11)
+
     def summary(self):
         status, result = self.call('GET', '/dashboard')
         self.assertEqual(status, 200)
         return result
 
     def test_contract_and_categories(self):
-        self.assertEqual(len(ROUTES), 12)
+        self.assertEqual(len(ROUTES), 18)
         status, data = self.call('GET', '/categories')
         self.assertEqual(len(data['items']), 11)
         self.assertEqual(self.call('GET', '/unknown')[0], 404)
-        self.assertEqual(self.call('POST', '/categories', {})[0], 404)
+        self.assertEqual(self.call('POST', '/categories', {})[0], 400)
 
     def test_required_location_and_real_date(self):
         for body in [self.expense(location=''), self.expense(location=None), self.expense(date='2026-02-30'),

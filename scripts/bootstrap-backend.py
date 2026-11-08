@@ -61,7 +61,7 @@ def main():
     if args.set_admin_password:
         set_admin_password(session, outputs)
     # Only public deployment identifiers are printed. No database URL or passwords.
-    for key in ('AwsRegion','ApiBaseUrl','AccountsTableName','VendorsTableName','CategoriesTableName','TransactionsTableName','RepaymentAllocationsTableName','UserPoolId','UserPoolClientId','CognitoDomain','AuthRedirectUri','SuperAdminEmail'):
+    for key in ('AwsRegion','ApiBaseUrl','AccountsTableName','ClientsTableName','VendorsTableName','CategoriesTableName','TransactionsTableName','RepaymentAllocationsTableName','UserPoolId','UserPoolClientId','CognitoDomain','AuthRedirectUri','SuperAdminEmail'):
         print(f'{key}: {outputs[key]}')
 
 

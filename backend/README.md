@@ -12,7 +12,7 @@ Disable controls update server-side membership. Disabling a user or customer blo
 
 ## Storage and authorization
 
-The existing five DynamoDB tables and three Lambdas are retained. Each organization uses a server-generated `WORKSPACE#customer-<uuid>` partition. Provider organization and membership records use `WORKSPACE#__provider__`. Both are account documents in different partitions; ledger routes cannot return provider records.
+The existing five DynamoDB tables and three Lambdas are retained, with a sixth dedicated table for clients. Each organization uses a server-generated `WORKSPACE#customer-<uuid>` partition. Provider organization and membership records use `WORKSPACE#__provider__`. Both are account documents in different partitions; ledger routes cannot return provider records.
 
 `GET /api/session` resolves the signed-in user. Membership is keyed by Cognito subject, not a client-supplied email. Every hosted request checks membership and customer status before selecting a workspace. Body fields, query parameters and URL fragments cannot select a tenant. API Gateway continues to validate the Cognito token and scope.
 
@@ -20,7 +20,7 @@ Existing `WORKSPACE#clearbook` records are preserved and are **not automatically
 
 ## Provider API additions
 
-All paths start with `/api`. The 12 ledger endpoints listed below require an active organization membership. Seven endpoints are served by the reference Lambda:
+All paths start with `/api`. The 18 ledger endpoints listed below require an active organization membership. Seven endpoints are served by the reference Lambda:
 
 | Method | Path | Access |
 | --- | --- | --- |
@@ -64,7 +64,7 @@ Repayments allocate FIFO to funding on or before the repayment date. Same-day fu
 
 Updates require the latest transaction `version`. Previous values, actor and time are retained in audit history. Reversals keep the original record and require a reason. The app rejects a change affecting more than 99 records plus the revision item, an oversized transaction, or an oversized audit record, before issuing writes. It never splits financial changes into non-atomic batches. Large repayments may need to be split into smaller entries. These bounds follow [DynamoDB transaction limits](https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_TransactWriteItems.html).
 
-## Ledger API (12 endpoints)
+## Ledger API (18 endpoints)
 
 All routes start with `/api`.
 
@@ -76,14 +76,20 @@ All routes start with `/api`.
 | GET | `/vendors` | List vendors |
 | POST | `/vendors` | Add vendor |
 | PATCH | `/vendors/{id}` | Update vendor |
-| GET | `/categories` | List 11 fixed categories |
+| GET | `/clients` | List clients |
+| POST | `/clients` | Add client |
+| PATCH | `/clients/{id}` | Edit client |
+| GET | `/locations` | List saved and historical locations |
+| POST | `/locations` | Add reusable location |
+| POST | `/categories` | Add custom category |
+| GET | `/categories` | List default and custom categories |
 | GET | `/transactions` | List/filter/paginate with details and allocations |
-| POST | `/transactions` | Create expense/payback/transfer |
+| POST | `/transactions` | Create expense/payback/credit (legacy transfers remain supported) |
 | PATCH | `/transactions/{id}` | Update with version |
 | POST | `/transactions/{id}/reverse` | Reverse with reason and version |
-| GET | `/dashboard` | Totals and creditor balances |
+| GET | `/dashboard` | Totals, creditor balances, client receipts and account movements |
 
-Listing supports `page`, `limit` (1-200), `q`, `payer`, `vendor`, `category`, `location`, `type`, `status`, `from`, `to`, `include_reversed=true`. Reversed records are excluded by default. Invalid input returns a JSON `error`. Conflicts return 409. Categories are fixed to the user's 11 categories. Accounts used in transactions cannot change ownership type.
+Listing supports `page`, `limit` (1-200), `q`, `payer`, `recipient`, `account`, `client_id`, `vendor`, `category`, `location`, `type`, `status`, `from`, `to`, `include_reversed=true`. Reversed records are excluded by default. Invalid input returns a JSON `error`. Conflicts return 409. Each workspace starts with 11 categories and can add custom categories. Accounts used in transactions cannot change ownership type.
 
 Create example (IDs must exist):
 
@@ -116,3 +122,19 @@ The frontend loads once on startup, after successful saves, or when **Refresh** 
 Run `python -m unittest discover -s backend/tests -v`. The cross-repository frontend integration test belongs to `clearbook-frontend`. Backend tests cover accounting, concurrency, auditing, auth context and validation. Boto3 Stubber tests validate DynamoDB encoding, paginated consistent reads, revision conditions, conflicts and transaction limits. The integration test runs the frontend handlers against a real local HTTP server with DOM stubs; it is not a visual browser test.
 
 See [DEPLOYMENT.md](DEPLOYMENT.md) for deployment, provider password setup and stack verification.
+
+
+## Client receipts
+
+Clients are business contacts that send incoming payments, separate from the provider dashboard's customer organizations. `POST /api/clients` requires `name` (120 characters maximum); optional fields are `contact` (120), `phone` (40), and `email` (254, validated). Names are unique ignoring case within each workspace. Client records use their own DynamoDB `clients` table and the existing server-authorized workspace partition.
+
+A credit uses `type: "CREDIT"`, `client_id`, `recipient` (receiving INTERNAL business account), `amount`, `date`, `mode`, and `location`. `payer`, `vendor`, and expense `category` must be empty. Credits return status `received` and share the existing transaction table, idempotency, version checks, audit history and reversal flow. They increase client receipts and account incoming/net movement, without affecting expenses, creditor funding or repayment allocations.
+
+`GET /api/dashboard` includes `totals.credits`, client received totals, and per-business-account `credits`, `incoming`, `outgoing`, `net_movement`. Incoming includes historical transfers; outgoing includes expenses, paybacks and historical transfers. Net movement excludes an opening balance and is not an available account balance. Historical transfers retain their original accounting meaning. Local JSON stores gain the empty clients collection automatically without changing their other data.
+
+
+## Saved locations
+
+`GET /api/locations` returns alphabetically sorted `{name}` items from saved locations and historical transaction locations. `POST /api/locations` accepts `{name}` (trimmed, required, at most 200 characters); duplicate names ignoring case return 409. All records are workspace-isolated. Location records use a separate `locations#` prefix and logical collection within the existing categories table, so no additional physical table, permission, or environment mapping is required. Existing six-table mappings automatically map locations to the categories table. Location collections remain separate from expense categories.
+
+Deploy the updated reference Lambda and the two new API Gateway routes before publishing the frontend. Existing free-text transaction locations are preserved and appear in the dropdown without a data migration. Transaction APIs continue accepting free-text locations for backward compatibility.

@@ -1,4 +1,4 @@
-"""The 12-route contract, shared by the local HTTP server and Lambda handlers."""
+"""The API contract, shared by the local HTTP server and Lambda handlers."""
 import base64
 import json
 import logging
@@ -20,7 +20,9 @@ except ImportError:
 ROUTES = [
     ('GET', r'/accounts', 'reference'), ('POST', r'/accounts', 'reference'), ('PATCH', r'/accounts/([^/]+)', 'reference'),
     ('GET', r'/vendors', 'reference'), ('POST', r'/vendors', 'reference'), ('PATCH', r'/vendors/([^/]+)', 'reference'),
-    ('GET', r'/categories', 'reference'),
+    ('GET', r'/categories', 'reference'), ('POST', r'/categories', 'reference'),
+    ('GET', r'/locations', 'reference'), ('POST', r'/locations', 'reference'),
+    ('GET', r'/clients', 'reference'), ('POST', r'/clients', 'reference'), ('PATCH', r'/clients/([^/]+)', 'reference'),
     ('GET', r'/transactions', 'transactions'), ('POST', r'/transactions', 'transactions'),
     ('PATCH', r'/transactions/([^/]+)', 'transactions'), ('POST', r'/transactions/([^/]+)/reverse', 'transactions'),
     ('GET', r'/dashboard', 'dashboard'),

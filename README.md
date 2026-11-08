@@ -1,3 +1,7 @@
+# Clients and incoming credits pending deployment
+
+The source now adds a Clients directory and incoming `CREDIT` transactions. Storage requires six entity mappings, including a dedicated clients table. Tested local changes have not been deployed to AWS. See [client credit deployment](CLIENT_CREDITS.md) before deploying the backend or frontend.
+
 # Provider/customer separation pending deployment
 
 The source adds separate software-provider and organization-user access. The provider dashboard onboards organizations and assigns up to two users to each organization; each organization receives an isolated ledger. Deployment and security details are in [backend/README.md](backend/README.md#provider-and-customer-access). Existing shared ledger data is preserved and is not automatically assigned to an organization.
