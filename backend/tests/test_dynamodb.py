@@ -6,7 +6,7 @@ from unittest.mock import patch
 import boto3
 from botocore.stub import Stubber, ANY
 
-from backend.database import DynamoStore, StoreConflict, StoreLimitError, empty_state
+from backend.database import DynamoStore, StoreConflict, StoreLimitError, empty_state, REGISTRY_ENTITIES
 
 
 class DynamoStorageTest(unittest.TestCase):
@@ -111,6 +111,14 @@ class DynamoStorageTest(unittest.TestCase):
         with patch.object(store,'revision',return_value=4), patch.object(self.client,'query',return_value={'Items':[item]}):
             with self.assertRaisesRegex(StoreConflict,'migration'):
                 store.read()
+
+    def test_registry_uses_only_dedicated_tables_and_own_revision(self):
+        tables = {entity:'test-'+entity for entity in (*empty_state(),*REGISTRY_ENTITIES)}
+        store = DynamoStore(tables,client=self.client,entities=REGISTRY_ENTITIES)
+        self.assertEqual(store.table,'test-organizations')
+        with patch.object(store,'revision',return_value=0),patch.object(self.client,'query',return_value={'Items':[]}) as query:
+            store.read()
+        self.assertEqual({c.kwargs['TableName'] for c in query.call_args_list},{'test-organizations','test-users'})
 
 
 if __name__ == '__main__':

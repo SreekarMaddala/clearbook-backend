@@ -1,3 +1,7 @@
+# Dedicated provider registry deployed
+
+Organization onboarding, memberships, enable/disable and access deletion now use dedicated `clearbook-organizations` and `clearbook-users` tables. The dedicated tables were created and live read-only verification passed on 2026-11-08. Both tables have point-in-time recovery enabled. The old provider partition contained no onboarding records, so no migration writes were needed. See [PROVIDER_REGISTRY.md](PROVIDER_REGISTRY.md).
+
 # Clients and incoming credits pending deployment
 
 The source now adds a Clients directory and incoming `CREDIT` transactions. Storage requires six entity mappings, including a dedicated clients table. Tested local changes have not been deployed to AWS. See [client credit deployment](CLIENT_CREDITS.md) before deploying the backend or frontend.

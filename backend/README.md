@@ -12,7 +12,7 @@ Disable controls update server-side membership. Disabling a user or customer blo
 
 ## Storage and authorization
 
-The existing five DynamoDB tables and three Lambdas are retained, with a sixth dedicated table for clients. Each organization uses a server-generated `WORKSPACE#customer-<uuid>` partition. Provider organization and membership records use `WORKSPACE#__provider__`. Both are account documents in different partitions; ledger routes cannot return provider records.
+The existing five DynamoDB tables and three Lambdas are retained, with a sixth dedicated table for clients. Each organization uses a server-generated `WORKSPACE#customer-<uuid>` partition. Provider organization records use `clearbook-organizations` and memberships use `clearbook-users`, both under `WORKSPACE#__provider__`. These registry records are separate from business account documents and have an independent revision guard. Customer authentication reads only the two registry tables; ledger operations read the business tables.
 
 `GET /api/session` resolves the signed-in user. Membership is keyed by Cognito subject, not a client-supplied email. Every hosted request checks membership and customer status before selecting a workspace. Body fields, query parameters and URL fragments cannot select a tenant. API Gateway continues to validate the Cognito token and scope.
 
@@ -20,12 +20,14 @@ Existing `WORKSPACE#clearbook` records are preserved and are **not automatically
 
 ## Provider API additions
 
-All paths start with `/api`. The 18 ledger endpoints listed below require an active organization membership. Seven endpoints are served by the reference Lambda:
+All paths start with `/api`. The 18 ledger endpoints listed below require an active organization membership. Nine provider/session endpoints are served by the reference Lambda:
 
 | Method | Path | Access |
 | --- | --- | --- |
 | GET | `/session` | Signed-in provider or active customer |
 | GET, POST | `/provider/customers` | Provider only |
+| DELETE | `/provider/customers/{id}` | Provider only; archives organization access and its users |
+| DELETE | `/provider/users/{id}` | Provider only; archives user access |
 | PATCH | `/provider/customers/{id}` | Provider only; `{ "enabled": true/false }` |
 | GET, POST | `/provider/users` | Provider only |
 | PATCH | `/provider/users/{id}` | Provider only; `{ "enabled": true/false }` |
@@ -138,3 +140,6 @@ A credit uses `type: "CREDIT"`, `client_id`, `recipient` (receiving INTERNAL bus
 `GET /api/locations` returns alphabetically sorted `{name}` items from saved locations and historical transaction locations. `POST /api/locations` accepts `{name}` (trimmed, required, at most 200 characters); duplicate names ignoring case return 409. All records are workspace-isolated. Location records use a separate `locations#` prefix and logical collection within the existing categories table, so no additional physical table, permission, or environment mapping is required. Existing six-table mappings automatically map locations to the categories table. Location collections remain separate from expense categories.
 
 Deploy the updated reference Lambda and the two new API Gateway routes before publishing the frontend. Existing free-text transaction locations are preserved and appear in the dropdown without a data migration. Transaction APIs continue accepting free-text locations for backward compatibility.
+
+
+Dedicated registry migration and deployment order are documented in [PROVIDER_REGISTRY.md](../PROVIDER_REGISTRY.md).

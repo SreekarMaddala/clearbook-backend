@@ -24,7 +24,7 @@ class ProviderTest(unittest.TestCase):
         self.b = self.call('POST', '/provider/customers', {'name':'Organization B'})[1]
         with workspace_scope(PLATFORM_WORKSPACE), connection(write=True) as db:
             for subject, organization in [('alice', self.a), ('bob', self.b)]:
-                db.put('accounts', 'user#' + subject, {'id':subject, 'kind':'user', 'email':subject+'@example.com', 'customer_id':organization['id'], 'enabled':True})
+                db.put('users', 'user#' + subject, {'id':subject, 'kind':'user', 'email':subject+'@example.com', 'customer_id':organization['id'], 'enabled':True})
 
     def tearDown(self):
         self.environment.stop()
@@ -62,7 +62,7 @@ class ProviderTest(unittest.TestCase):
         self.assertEqual(self.call('GET','/session',subject='alice')[1]['workspace']['name'],'Organization A')
 
     def test_new_org_has_its_own_categories(self):
-        self.assertEqual(len(self.call('GET','/categories',subject='alice')[1]['items']),11)
+        self.assertEqual(len(self.call('GET','/categories',subject='alice')[1]['items']),12)
         self.assertEqual(self.call('GET','/accounts',subject='alice')[1]['items'],[])
         users=self.call('GET','/provider/users')[1]['items']
         self.assertEqual(len(users),2)
@@ -109,6 +109,45 @@ class ProviderTest(unittest.TestCase):
         self.assertEqual(self.call('POST','/locations',{'name':'Private site'},subject='bob')[0],201)
         self.assertEqual(self.call('POST','/locations',{'name':'Private site'})[0],403)
 
+    def test_registry_is_separate_from_business_accounts(self):
+        with workspace_scope(PLATFORM_WORKSPACE), connection() as db:
+            self.assertEqual(db.all('accounts'),[])
+            self.assertEqual(len(db.all('organizations')),2)
+            self.assertEqual(len(db.all('users')),2)
+        self.assertEqual(self.call('GET','/accounts',subject='alice')[1]['items'],[])
+
+    def test_legacy_local_registry_documents_are_preserved(self):
+        with workspace_scope(PLATFORM_WORKSPACE), connection(write=True) as db:
+            db.put('accounts','customer#legacy',{'id':'legacy','kind':'customer','name':'Legacy','enabled':True})
+            db.put('accounts','user#legacy-user',{'id':'legacy-user','kind':'user','email':'legacy@example.com','customer_id':'legacy','enabled':True})
+        self.assertEqual(self.call('GET','/session',subject='legacy-user')[0],200)
+        with workspace_scope(PLATFORM_WORKSPACE), connection(write=True) as db:
+            self.assertEqual(db.get('organizations','customer#legacy')['name'],'Legacy')
+            self.assertEqual(db.get('users','user#legacy-user')['email'],'legacy@example.com')
+            self.assertEqual(db.all('accounts'),[])
+
+    def test_delete_user_revokes_access_and_preserves_tombstone(self):
+        self.assertEqual(self.call('DELETE','/provider/users/alice',subject='bob')[0],403)
+        self.assertEqual(self.call('DELETE','/provider/users/alice')[0],200)
+        self.assertEqual(self.call('GET','/session',subject='alice')[0],403)
+        users = self.call('GET','/provider/users')[1]['items']
+        self.assertEqual([u['id'] for u in users],['bob'])
+        self.assertEqual(self.call('PATCH','/provider/users/alice',{'enabled':True})[0],404)
+        with workspace_scope(PLATFORM_WORKSPACE), connection() as db:
+            self.assertTrue(db.get('users','user#alice')['deleted_at'])
+            self.assertFalse(db.get('users','user#alice')['enabled'])
+
+    def test_delete_organization_revokes_its_users_and_preserves_ledger(self):
+        account = self.call('POST','/accounts',{'name':'Bank','owner':'A','type':'INTERNAL'},subject='alice')[1]
+        self.assertEqual(self.call('DELETE','/provider/customers/'+self.a['id'])[0],200)
+        self.assertEqual(self.call('GET','/session',subject='alice')[0],403)
+        self.assertEqual(self.call('GET','/session',subject='bob')[0],200)
+        self.assertEqual([c['id'] for c in self.call('GET','/provider/customers')[1]['items']],[self.b['id']])
+        with workspace_scope(self.a['id']), connection() as db:
+            self.assertEqual(db.get('accounts',account['id'])['name'],'Bank')
+        with workspace_scope(PLATFORM_WORKSPACE), connection() as db:
+            self.assertTrue(db.get('users','user#alice')['deleted_at'])
+
     def test_disabling_an_org_blocks_its_users(self):
         self.assertEqual(self.call('PATCH','/provider/customers/'+self.a['id'],{'enabled':False})[0],200)
         self.assertEqual(self.call('GET','/accounts',subject='alice')[0],403)
@@ -131,7 +170,7 @@ class ProviderTest(unittest.TestCase):
 
     def test_two_user_limit_is_per_org(self):
         with workspace_scope(PLATFORM_WORKSPACE), connection(write=True) as db:
-            db.put('accounts','user#alice-2',{'id':'alice-2','kind':'user','email':'second@example.com','customer_id':self.a['id'],'enabled':True})
+            db.put('users','user#alice-2',{'id':'alice-2','kind':'user','email':'second@example.com','customer_id':self.a['id'],'enabled':True})
         too_many={'email':'third@example.com','customer_id':self.a['id'],'temporary_password':'Temporary-Test-123'}
         self.assertEqual(self.call('POST','/provider/users',too_many)[0],409)
         other_org={**too_many,'customer_id':self.b['id'],'temporary_password':'short'}

@@ -17,6 +17,16 @@ Parameters:
     Default: clearbook-categories
     AllowedPattern: '[A-Za-z0-9_.-]{3,255}'
     Description: Existing categories DynamoDB table; managed by scripts/create-table.py
+  OrganizationsTable:
+    Type: String
+    Default: clearbook-organizations
+    AllowedPattern: '[A-Za-z0-9_.-]{3,255}'
+    Description: Dedicated provider organization registry
+  UsersTable:
+    Type: String
+    Default: clearbook-users
+    AllowedPattern: '[A-Za-z0-9_.-]{3,255}'
+    Description: Dedicated provider user membership registry
   ClientsTable:
     Type: String
     Default: clearbook-clients
@@ -62,10 +72,12 @@ Globals:
     Environment:
       Variables:
         DYNAMODB_TABLES: !Sub
-          - '{"accounts":"${Accounts}","vendors":"${Vendors}","clients":"${Clients}","categories":"${Categories}","transactions":"${Transactions}","repayment_allocations":"${Allocations}"}'
+          - '{"accounts":"${Accounts}","vendors":"${Vendors}","clients":"${Clients}","organizations":"${Organizations}","users":"${Users}","categories":"${Categories}","transactions":"${Transactions}","repayment_allocations":"${Allocations}"}'
           - Accounts: !Ref AccountsTable
             Vendors: !Ref VendorsTable
             Clients: !Ref ClientsTable
+            Organizations: !Ref OrganizationsTable
+            Users: !Ref UsersTable
             Categories: !Ref CategoriesTable
             Transactions: !Ref TransactionsTable
             Allocations: !Ref RepaymentAllocationsTable
@@ -168,7 +180,7 @@ Resources:
     Properties:
       CorsConfiguration:
         AllowOrigins: [!Ref AllowedOrigin, 'http://localhost:5173', 'http://127.0.0.1:5173']
-        AllowMethods: [GET, POST, PATCH, OPTIONS]
+        AllowMethods: [GET, POST, PATCH, DELETE, OPTIONS]
         AllowHeaders: [Content-Type, Authorization, Idempotency-Key]
         MaxAge: 600
       Auth:
@@ -195,6 +207,8 @@ Resources:
                 - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${AccountsTable}'
                 - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${VendorsTable}'
                 - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ClientsTable}'
+                - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${OrganizationsTable}'
+                - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${UsersTable}'
                 - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${CategoriesTable}'
                 - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TransactionsTable}'
                 - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${RepaymentAllocationsTable}'
@@ -214,6 +228,9 @@ Resources:
         UpdateCustomer:
           Type: HttpApi
           Properties: {ApiId: !Ref Api, Path: '/api/provider/customers/{id}', Method: PATCH}
+        DeleteCustomer:
+          Type: HttpApi
+          Properties: {ApiId: !Ref Api, Path: '/api/provider/customers/{id}', Method: DELETE}
         ListUsers:
           Type: HttpApi
           Properties: {ApiId: !Ref Api, Path: /api/provider/users, Method: GET}
@@ -223,6 +240,9 @@ Resources:
         UpdateUser:
           Type: HttpApi
           Properties: {ApiId: !Ref Api, Path: '/api/provider/users/{id}', Method: PATCH}
+        DeleteUser:
+          Type: HttpApi
+          Properties: {ApiId: !Ref Api, Path: '/api/provider/users/{id}', Method: DELETE}
         ListAccounts:
           Type: HttpApi
           Properties: {ApiId: !Ref Api, Path: /api/accounts, Method: GET}
@@ -277,6 +297,11 @@ Resources:
                 - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${CategoriesTable}'
                 - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TransactionsTable}'
                 - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${RepaymentAllocationsTable}'
+            - Effect: Allow
+              Action: [dynamodb:GetItem, dynamodb:Query]
+              Resource:
+                - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${OrganizationsTable}'
+                - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${UsersTable}'
       Events:
         ListTransactions:
           Type: HttpApi
@@ -302,6 +327,8 @@ Resources:
                 - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${AccountsTable}'
                 - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${VendorsTable}'
                 - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ClientsTable}'
+                - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${OrganizationsTable}'
+                - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${UsersTable}'
                 - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${CategoriesTable}'
                 - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TransactionsTable}'
                 - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${RepaymentAllocationsTable}'
@@ -317,6 +344,10 @@ Outputs:
     Value: !Ref AccountsTable
   AccountsTableName:
     Value: !Ref AccountsTable
+  OrganizationsTableName:
+    Value: !Ref OrganizationsTable
+  UsersTableName:
+    Value: !Ref UsersTable
   ClientsTableName:
     Value: !Ref ClientsTable
   VendorsTableName:

@@ -57,11 +57,11 @@ def main():
     payload = json.loads(response['Payload'].read())
     if response.get('FunctionError') or payload.get('initialized') is not True:
         raise RuntimeError('Database initialization failed; inspect the reference Lambda logs.')
-    print('DynamoDB initialized; 11 categories ready.')
+    print('DynamoDB default categories initialized.')
     if args.set_admin_password:
         set_admin_password(session, outputs)
     # Only public deployment identifiers are printed. No database URL or passwords.
-    for key in ('AwsRegion','ApiBaseUrl','AccountsTableName','ClientsTableName','VendorsTableName','CategoriesTableName','TransactionsTableName','RepaymentAllocationsTableName','UserPoolId','UserPoolClientId','CognitoDomain','AuthRedirectUri','SuperAdminEmail'):
+    for key in ('AwsRegion','ApiBaseUrl','AccountsTableName','ClientsTableName','OrganizationsTableName','UsersTableName','VendorsTableName','CategoriesTableName','TransactionsTableName','RepaymentAllocationsTableName','UserPoolId','UserPoolClientId','CognitoDomain','AuthRedirectUri','SuperAdminEmail'):
         print(f'{key}: {outputs[key]}')
 
 

@@ -51,6 +51,22 @@ def get_reference(db, table, key):
     return row
 
 
+PAYEE_ROLES = ('SUPPLIER', 'SUBCONTRACTOR', 'STAFF')
+SALARY_CATEGORY = 'Staff Salaries'
+
+
+def payee_roles(record):
+    """Keep legacy payees readable until their explicit roles are migrated."""
+    if 'roles' in record:
+        return record['roles']
+    category = record.get('category', '').casefold()
+    if category in ('staff', 'staff salaries'):
+        return ['STAFF']
+    if 'sub contractor' in category or 'subcontractor' in category:
+        return ['SUBCONTRACTOR']
+    return ['SUPPLIER']
+
+
 def reference(method, resource, record_id=None, body=None):
     with connection(write=method != 'GET') as db:
         if resource == 'locations':
@@ -69,7 +85,10 @@ def reference(method, resource, record_id=None, body=None):
             db.put('locations', str(uuid4()), record)
             return record
         if method == 'GET':
-            return {'items': sorted(db.all(resource), key=lambda r: r['sort_order'] if resource == 'categories' else r['name'])}
+            rows = db.all(resource)
+            if resource == 'vendors':
+                rows = [{**r, 'roles': payee_roles(r)} for r in rows]
+            return {'items': sorted(rows, key=lambda r: r['sort_order'] if resource == 'categories' else r['name'])}
         body = body or {}
         if resource == 'categories':
             name = text(body.get('name'), 'Category name', 80)
@@ -98,7 +117,17 @@ def reference(method, resource, record_id=None, body=None):
         else:
             category = text(data.get('category'), 'Category', 80)
             get_reference(db, 'categories', category)
-            values = {'name': name, 'category': category, 'role': text(data.get('role', ''), 'Role', 500, False)}
+            roles = data.get('roles', payee_roles(data))
+            if not isinstance(roles, list) or not roles or any(not isinstance(r, str) or r not in PAYEE_ROLES for r in roles):
+                raise APIError('Choose Supplier, Subcontractor, or Staff roles.')
+            roles = [r for r in PAYEE_ROLES if r in roles]
+            if 'STAFF' not in roles and category == SALARY_CATEGORY:
+                raise APIError('Staff Salaries requires the Staff role.')
+            if existing and 'STAFF' in payee_roles(existing) and 'STAFF' not in roles and any(
+                    t.get('vendor') == record_id and t.get('category') == SALARY_CATEGORY for t in db.all('transactions')):
+                raise APIError('Staff with salary history must retain the Staff role.', 409)
+            values = {'name': name, 'category': category, 'roles': roles,
+                      'role': text(data.get('role', ''), 'Role', 500, False)}
         duplicate = next((r for r in db.all(resource) if r['name'].casefold() == name.casefold()), None)
         if duplicate and duplicate['id'] != record_id:
             raise APIError('That name already exists.', 409)
@@ -122,6 +151,9 @@ def normalized_transaction(db, body):
     vendor = body.get('vendor') or None
     recipient = body.get('recipient') or None
     category = body.get('category') or None
+    salary_month = body.get('salary_month') or None
+    if salary_month is not None and (kind != 'EXPENSE' or category != SALARY_CATEGORY):
+        raise APIError('Salary month is only used for Staff Salaries expenses.')
     if kind == 'CREDIT':
         if body.get('payer') or vendor or category:
             raise APIError('Credits use a client and receiving account, without a payer, vendor or expense category.')
@@ -137,6 +169,15 @@ def normalized_transaction(db, body):
         get_reference(db, 'categories', category)
         if vendor:
             get_reference(db, 'vendors', vendor)
+        if category == SALARY_CATEGORY:
+            employee = get_reference(db, 'vendors', vendor)
+            if 'STAFF' not in payee_roles(employee):
+                raise APIError('Select a staff member for salary payments.')
+            try:
+                if not isinstance(salary_month, str) or date.fromisoformat(salary_month + '-01').strftime('%Y-%m') != salary_month:
+                    raise ValueError
+            except (ValueError, TypeError):
+                raise APIError('Choose the salary month in YYYY-MM format.')
     else:
         if vendor or category:
             raise APIError('Paybacks and transfers cannot have an expense category or vendor.')
@@ -150,11 +191,14 @@ def normalized_transaction(db, body):
     mode = body.get('mode')
     if mode not in ('UPI', 'NEFT', 'RTGS', 'IMPS', 'CASH', 'CHEQUE'):
         raise APIError('Invalid payment mode.')
-    return {'date': day, 'amount_paise': paise(body.get('amount')), 'type': kind,
+    values = {'date': day, 'amount_paise': paise(body.get('amount')), 'type': kind,
             'payer': payer['id'] if payer else None, 'client_id': client_id, 'vendor': vendor, 'recipient': recipient, 'category': category,
             'mode': mode, 'location': text(body.get('location'), 'Location', 200),
             'notes': text(body.get('notes', ''), 'Notes', 1000, False),
             'receipt_name': text(body['receiptName'], 'Receipt filename', 255) if body.get('receiptName') else None}
+    if category == SALARY_CATEGORY:
+        values['salary_month'] = salary_month
+    return values
 
 
 def rebuild_allocations(db):
@@ -233,6 +277,8 @@ def write_transaction(method, body, record_id=None, key=None, actor='local-admin
                    'version': existing['version'] + 1, 'updated_at': stamp, 'history': json.dumps(history)})
         else:
             merged = {**existing, 'amount': str(Decimal(existing['amount_paise']) / 100), 'receiptName': existing['receipt_name'], **body} if existing else body
+            if existing and merged.get('category') != SALARY_CATEGORY and 'salary_month' not in body:
+                merged.pop('salary_month', None)
             values = normalized_transaction(db, merged)
             # Preserve hashes for retries of transactions created before clients existed.
             hash_values = {k:v for k,v in values.items() if k != 'client_id' or v is not None}
@@ -247,6 +293,8 @@ def write_transaction(method, body, record_id=None, key=None, actor='local-admin
             if existing:
                 history = json.loads(existing['history']) + [{'action': 'update', 'actor': actor, 'at': stamp, 'before': {k:v for k,v in existing.items() if k != 'history'}}]
                 values = {**existing, **values, 'updated_at': stamp, 'version': existing['version'] + 1, 'history': json.dumps(history)}
+                if values['category'] != SALARY_CATEGORY:
+                    values.pop('salary_month', None)
             else:
                 record_id = str(uuid4())
                 values.update(id=record_id, created_at=stamp, updated_at=stamp, idempotency_key=key, request_hash=digest,
@@ -269,7 +317,7 @@ def transaction_list(query):
         names = {a['id']:a['name'] for a in db.all('accounts')}
         vendors = {a['id']:a['name'] for a in db.all('vendors')}
         clients = {a['id']:a['name'] for a in db.all('clients')}
-        for field in ('payer', 'recipient', 'client_id', 'vendor', 'category', 'location', 'type'):
+        for field in ('payer', 'recipient', 'client_id', 'vendor', 'category', 'location', 'type', 'salary_month'):
             if query.get(field):
                 rows = [t for t in rows if t.get(field) == query[field]]
         if query.get('account'):

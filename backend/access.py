@@ -23,11 +23,11 @@ def identity(claims):
     if is_provider(claims):
         return {'role': 'provider', 'name': 'Software provider', 'workspace': None}
     with workspace_scope(PLATFORM_WORKSPACE), connection() as db:
-        member = db.get('accounts', 'user#' + claims['sub'])
-        if not member or not member.get('enabled'):
+        member = db.get('users', 'user#' + claims['sub'])
+        if not member or not member.get('enabled') or member.get('deleted_at'):
             raise APIError('Your account has no active organization access. Contact your software provider.', 403)
-        organization = db.get('accounts', 'customer#' + member['customer_id'])
-        if not organization or not organization.get('enabled'):
+        organization = db.get('organizations', 'customer#' + member['customer_id'])
+        if not organization or not organization.get('enabled') or organization.get('deleted_at'):
             raise APIError('Your organization is disabled. Contact your software provider.', 403)
         return {'role': 'customer', 'name': member['email'],
                 'workspace': {'id': organization['id'], 'name': organization['name']}}

@@ -11,8 +11,9 @@ from uuid import uuid4
 
 ROOT = Path(__file__).resolve().parent
 CATEGORIES = ['Fuel', 'Food', 'Porter', 'Labour Transport', 'Power Tools', 'Toll',
-              'Machinery Repair', 'Machinery Purchase', 'Other Expense', 'Labour Tips', 'Sub Contractor']
+              'Machinery Repair', 'Machinery Purchase', 'Other Expense', 'Labour Tips', 'Sub Contractor', 'Staff Salaries']
 ENTITIES = ('accounts', 'vendors', 'categories', 'transactions', 'repayment_allocations', 'clients', 'locations')
+REGISTRY_ENTITIES = ('organizations', 'users')
 _LOCAL_LOCK = threading.RLock()
 _WORKSPACE = ContextVar('clearbook_workspace', default=None)
 PLATFORM_WORKSPACE = '__provider__'
@@ -36,8 +37,8 @@ class StoreLimitError(Exception):
     pass
 
 
-def empty_state():
-    return {name: {} for name in ENTITIES}
+def empty_state(entities=ENTITIES):
+    return {name: {} for name in entities}
 
 
 class Documents:
@@ -68,18 +69,19 @@ def _plain(value):
 
 
 class DynamoStore:
-    def __init__(self, table, client=None):
+    def __init__(self, table, client=None, entities=ENTITIES):
         import boto3
         from boto3.dynamodb.types import TypeDeserializer, TypeSerializer
         self.client = client or boto3.client('dynamodb', region_name=os.environ.get('AWS_REGION', 'ap-south-2'))
-        self.tables = dict(table) if isinstance(table, dict) else {entity: table for entity in ENTITIES}
+        self.entities = tuple(entities)
+        self.tables = {entity: table[entity] for entity in self.entities if entity in table} if isinstance(table, dict) else {entity: table for entity in self.entities}
         # Locations share the categories table with a separate entity/SK prefix.
         # Existing six-table deployments need no new table or environment setting.
-        if 'locations' not in self.tables and 'categories' in self.tables:
+        if 'locations' in self.entities and 'locations' not in self.tables and 'categories' in self.tables:
             self.tables['locations'] = self.tables['categories']
-        if set(self.tables) != set(ENTITIES):
-            raise ValueError('Mappings for accounts, vendors, categories, transactions, repayment_allocations and clients are required.')
-        self.table = self.tables['accounts']  # Workspace revision lives with accounts.
+        if set(self.tables) != set(self.entities):
+            raise ValueError('Required entity table mappings are missing: '+', '.join(set(self.entities)-set(self.tables)))
+        self.table = self.tables['organizations' if self.entities == REGISTRY_ENTITIES else 'accounts']
         self.legacy = len(set(self.tables.values())) == 1
         self.pk = 'WORKSPACE#' + (_WORKSPACE.get() or os.environ.get('WORKSPACE_ID', 'clearbook'))
         self.serializer, self.deserializer = TypeSerializer(), TypeDeserializer()
@@ -98,7 +100,7 @@ class DynamoStore:
         # Strongly consistent reads bracketed by the revision detect cross-page changes.
         for _ in range(3):
             revision = self.revision()
-            state = empty_state()
+            state = empty_state(self.entities)
             for table in dict.fromkeys(self.tables.values()):
                 cursor = None
                 while True:
@@ -110,7 +112,7 @@ class DynamoStore:
                     for raw in response.get('Items', []):
                         item = self.decode(raw)
                         entity = item.get('entity')
-                        if entity in ENTITIES:
+                        if entity in self.entities:
                             if not self.legacy and self.tables[entity] != table:
                                 raise StoreConflict('Storage migration is required. Run scripts/migrate-five-tables.py before using this backend.')
                             state[entity][item['record_id']] = item['data']
@@ -123,7 +125,7 @@ class DynamoStore:
 
     def commit(self, revision, before, after):
         actions = []
-        for entity in ENTITIES:
+        for entity in self.entities:
             for key in sorted(before[entity].keys() | after[entity].keys()):
                 old, new = before[entity].get(key), after[entity].get(key)
                 if old == new:
@@ -184,6 +186,15 @@ def _local_state(write):
             state = json.loads(path.read_text(encoding='utf-8')) if path.exists() else empty_state()
             for entity in ENTITIES:
                 state.setdefault(entity, {})
+            if workspace == PLATFORM_WORKSPACE:
+                for entity in REGISTRY_ENTITIES:
+                    state.setdefault(entity, {})
+                # Upgrade local provider documents without touching business accounts.
+                for key, record in list(state['accounts'].items()):
+                    entity = {'customer':'organizations','user':'users'}.get(record.get('kind'))
+                    if entity:
+                        state[entity].setdefault(key,record)
+                        del state['accounts'][key]
             original = copy.deepcopy(state)
             yield Documents(state)
             if write and state != original:
@@ -205,7 +216,7 @@ def _local_state(write):
 def connection(write=False):
     table = json.loads(os.environ['DYNAMODB_TABLES']) if os.environ.get('DYNAMODB_TABLES') else os.environ.get('DYNAMODB_TABLE')
     if table:
-        store = DynamoStore(table)
+        store = DynamoStore(table, entities=REGISTRY_ENTITIES if _WORKSPACE.get() == PLATFORM_WORKSPACE else ENTITIES)
         revision, state = store.read()
         original = copy.deepcopy(state)
         yield Documents(state)
@@ -227,4 +238,4 @@ def initialize():
 
 if __name__ == '__main__':
     initialize()
-    print('Document store initialized with 11 categories.')
+    print(f'Document store initialized with {len(CATEGORIES)} categories.')

@@ -20,8 +20,8 @@ class APITest(unittest.TestCase):
         os.environ['LOCAL_DATA_PATH'] = str(Path(self.temp.name) / 'test.json')
         initialize()
         with workspace_scope(PLATFORM_WORKSPACE), connection(write=True) as db:
-            db.put('accounts', 'customer#clearbook', {'id':'clearbook', 'name':'Test customer', 'enabled':True})
-            db.put('accounts', 'user#test-user', {'email':'test@example.com', 'customer_id':'clearbook', 'enabled':True})
+            db.put('organizations', 'customer#clearbook', {'id':'clearbook', 'name':'Test customer', 'enabled':True})
+            db.put('users', 'user#test-user', {'email':'test@example.com', 'customer_id':'clearbook', 'enabled':True})
         self.business = self.create('/accounts', {'name':'Business','type':'INTERNAL','owner':'Company'})
         self.creditor = self.create('/accounts', {'name':'Uncle','type':'THIRD_PARTY_CREDITOR','owner':'Uncle'})
         self.vendor = self.create('/vendors', {'name':'Shree Balaji Steels','category':'Other Expense','role':'Supplier'})
@@ -114,17 +114,61 @@ class APITest(unittest.TestCase):
         self.create('/transactions',self.expense(location='Historical site'))
         self.assertEqual(self.call('GET','/locations')[1]['items'],[{'name':'Historical site'},{'name':'New site'}])
         self.assertEqual(self.call('POST','/locations',{'name':'historical SITE'})[0],409)
-        self.assertEqual(len(self.call('GET','/categories')[1]['items']),11)
+        self.assertEqual(len(self.call('GET','/categories')[1]['items']),12)
 
     def summary(self):
         status, result = self.call('GET', '/dashboard')
         self.assertEqual(status, 200)
         return result
 
+    def test_staff_roles_and_salary_payment_lifecycle(self):
+        staff = self.create('/vendors', {'name': 'Supervisor', 'category': 'Staff Salaries',
+                                        'role': 'Site supervisor', 'roles': ['STAFF', 'SUPPLIER']})
+        self.assertEqual(staff['roles'], ['SUPPLIER', 'STAFF'])
+        body = self.expense(vendor=staff['id'], category='Staff Salaries', salary_month='2026-10')
+        payment = self.create('/transactions', body)
+        self.assertEqual(payment['salary_month'], '2026-10')
+        status, rows = self.call('GET', '/transactions', query={'salary_month': '2026-10'})
+        self.assertEqual([r['id'] for r in rows['items']], [payment['id']])
+        self.assertEqual(self.call('PATCH', '/vendors/' + staff['id'], {'roles': ['SUPPLIER'], 'category': 'Fuel'})[0], 409)
+        status, updated = self.call('PATCH', '/transactions/' + payment['id'],
+                                    {'salary_month': '2026-09', 'version': payment['version']})
+        self.assertEqual(status, 200, updated)
+        self.assertEqual(updated['salary_month'], '2026-09')
+        self.assertEqual(updated['amount'], payment['amount'])
+        status, changed = self.call('PATCH', '/transactions/' + payment['id'],
+                                    {'category': 'Other Expense', 'version': updated['version']})
+        self.assertEqual(status, 200, changed)
+        self.assertNotIn('salary_month', changed)
+        self.assertEqual(self.call('POST', '/transactions/' + payment['id'] + '/reverse',
+                                  {'reason': 'Test reversal', 'version': changed['version']})[0], 200)
+
+    def test_salary_requires_staff_and_valid_month(self):
+        staff = self.create('/vendors', {'name': 'Employee', 'category': 'Staff Salaries', 'roles': ['STAFF']})
+        salary = self.expense(vendor=staff['id'], category='Staff Salaries', salary_month='2026-10')
+        for changes in ({'salary_month': None}, {'salary_month': '2026-13'}, {'salary_month': '2026-1'},
+                        {'vendor': self.vendor['id']}, {'vendor': None}, {'category': 'Fuel'}):
+            self.assertIn(self.call('POST', '/transactions', {**salary, **changes},
+                                    headers={'Idempotency-Key': str(uuid4())})[0], (400, 404))
+        for roles in ([], 'STAFF', ['UNKNOWN'], [None]):
+            self.assertEqual(self.call('PATCH', '/vendors/' + staff['id'], {'roles': roles})[0], 400)
+        self.assertEqual(self.call('PATCH', '/vendors/' + staff['id'], {'roles': ['SUPPLIER']})[0], 400)
+
+    def test_legacy_payee_roles_and_non_salary_idempotency(self):
+        with connection(write=True) as db:
+            vendor = db.get('vendors', self.vendor['id'])
+            vendor.pop('roles', None)
+        rows = self.call('GET', '/vendors')[1]['items']
+        self.assertEqual(rows[0]['roles'], ['SUPPLIER'])
+        body = self.expense()
+        payment = self.create('/transactions', body, key='legacy-retry')
+        duplicate = self.create('/transactions', {**body, 'salary_month': None}, key='legacy-retry')
+        self.assertEqual(payment['id'], duplicate['id'])
+
     def test_contract_and_categories(self):
         self.assertEqual(len(ROUTES), 18)
         status, data = self.call('GET', '/categories')
-        self.assertEqual(len(data['items']), 11)
+        self.assertEqual(len(data['items']), 12)
         self.assertEqual(self.call('GET', '/unknown')[0], 404)
         self.assertEqual(self.call('POST', '/categories', {})[0], 400)
 

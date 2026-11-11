@@ -92,7 +92,7 @@ def lambda_response(event, group):
                 raise APIError('Software-provider access is required.', 403)
             if group != 'reference':
                 raise APIError('Endpoint not found.', 404)
-            status, result = dispatch_provider(method, path, body)
+            status, result = dispatch_provider(method, path, body, claims['sub'])
         else:
             if session['role'] == 'provider':
                 raise APIError('Software-provider accounts cannot access customer ledgers.', 403)

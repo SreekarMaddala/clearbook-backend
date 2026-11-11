@@ -55,11 +55,11 @@ def main():
     print('PASS: live API rejects missing JWT; localhost CORS preflight succeeds.')
     api_id=outputs['ApiBaseUrl'].split('//')[1].split('.')[0]
     routes=session.client('apigatewayv2').get_routes(ApiId=api_id)['Items']
-    assert len(routes)==19
+    assert len(routes)==27
     assert all(r.get('AuthorizationType')=='JWT' and 'clearbook/ledger' in r.get('AuthorizationScopes',[]) for r in routes)
-    print('PASS: all 19 live routes require scoped JWT authentication.')
-    tables={entity:outputs[key] for entity,key in {'clients':'ClientsTableName','accounts':'AccountsTableName','vendors':'VendorsTableName','categories':'CategoriesTableName','transactions':'TransactionsTableName','repayment_allocations':'RepaymentAllocationsTableName'}.items()}
-    assert len(set(tables.values()))==6
+    print('PASS: all 27 live routes require scoped JWT authentication.')
+    tables={entity:outputs[key] for entity,key in {'organizations':'OrganizationsTableName','users':'UsersTableName','clients':'ClientsTableName','accounts':'AccountsTableName','vendors':'VendorsTableName','categories':'CategoriesTableName','transactions':'TransactionsTableName','repayment_allocations':'RepaymentAllocationsTableName'}.items()}
+    assert len(set(tables.values()))==8
     for table in tables.values():
         assert session.client('dynamodb').describe_table(TableName=table)['Table']['TableStatus']=='ACTIVE'
     os.environ['DYNAMODB_TABLES']=json.dumps(tables)
