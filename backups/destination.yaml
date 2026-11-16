@@ -1,0 +1,22 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Clearbook backup vault in the chosen disaster recovery region
+Parameters:
+  VaultName:
+    Type: String
+    Default: clearbook-cross-region
+    AllowedPattern: '[A-Za-z0-9_-]{2,50}'
+Resources:
+  DestinationVault:
+    Type: AWS::Backup::BackupVault
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BackupVaultName: !Ref VaultName
+      BackupVaultTags:
+        Application: clearbook
+        Purpose: cross-region-recovery
+Outputs:
+  VaultArn:
+    Value: !GetAtt DestinationVault.BackupVaultArn
+  VaultName:
+    Value: !Ref DestinationVault

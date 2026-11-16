@@ -1,0 +1,114 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Daily Clearbook DynamoDB backups with a copy to another region
+Parameters:
+  DestinationVaultArn:
+    Type: String
+    Description: VaultArn output from destination.yaml in another region of this account
+    AllowedPattern: 'arn:aws:backup:[a-z0-9-]+:[0-9]{12}:backup-vault:[A-Za-z0-9_-]+'
+  RetentionDays:
+    Type: Number
+    Default: 30
+    MinValue: 1
+    MaxValue: 3650
+  VaultName:
+    Type: String
+    Default: clearbook-daily
+    AllowedPattern: '[A-Za-z0-9_-]{2,50}'
+  AccountsTable:
+    Type: String
+    Default: clearbook-accounts
+    AllowedPattern: '[A-Za-z0-9_.-]{3,255}'
+  VendorsTable:
+    Type: String
+    Default: clearbook-vendors
+    AllowedPattern: '[A-Za-z0-9_.-]{3,255}'
+  CategoriesTable:
+    Type: String
+    Default: clearbook-categories
+    AllowedPattern: '[A-Za-z0-9_.-]{3,255}'
+  TransactionsTable:
+    Type: String
+    Default: clearbook-transactions
+    AllowedPattern: '[A-Za-z0-9_.-]{3,255}'
+  RepaymentAllocationsTable:
+    Type: String
+    Default: clearbook-repayment_allocations
+    AllowedPattern: '[A-Za-z0-9_.-]{3,255}'
+  ClientsTable:
+    Type: String
+    Default: clearbook-clients
+    AllowedPattern: '[A-Za-z0-9_.-]{3,255}'
+  OrganizationsTable:
+    Type: String
+    Default: clearbook-organizations
+    AllowedPattern: '[A-Za-z0-9_.-]{3,255}'
+  UsersTable:
+    Type: String
+    Default: clearbook-users
+    AllowedPattern: '[A-Za-z0-9_.-]{3,255}'
+Resources:
+  SourceVault:
+    Type: AWS::Backup::BackupVault
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BackupVaultName: !Ref VaultName
+      BackupVaultTags:
+        Application: clearbook
+  BackupRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: backup.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForBackup'
+  DailyBackupPlan:
+    Type: AWS::Backup::BackupPlan
+    Properties:
+      BackupPlan:
+        BackupPlanName: !Sub '${AWS::StackName}-daily'
+        BackupPlanRule:
+          - RuleName: daily-with-regional-copy
+            TargetBackupVault: !Ref SourceVault
+            ScheduleExpression: 'cron(0 3 * * ? *)'
+            ScheduleExpressionTimezone: Asia/Kolkata
+            StartWindowMinutes: 60
+            CompletionWindowMinutes: 360
+            Lifecycle:
+              DeleteAfterDays: !Ref RetentionDays
+            CopyActions:
+              - DestinationBackupVaultArn: !Ref DestinationVaultArn
+                Lifecycle:
+                  DeleteAfterDays: !Ref RetentionDays
+            RecoveryPointTags:
+              Application: clearbook
+      BackupPlanTags:
+        Application: clearbook
+  TablesSelection:
+    Type: AWS::Backup::BackupSelection
+    Properties:
+      BackupPlanId: !Ref DailyBackupPlan
+      BackupSelection:
+        SelectionName: clearbook-eight-tables
+        IamRoleArn: !GetAtt BackupRole.Arn
+        Resources:
+          - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${AccountsTable}'
+          - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${VendorsTable}'
+          - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${CategoriesTable}'
+          - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TransactionsTable}'
+          - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${RepaymentAllocationsTable}'
+          - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ClientsTable}'
+          - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${OrganizationsTable}'
+          - !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${UsersTable}'
+Outputs:
+  BackupPlanId:
+    Value: !Ref DailyBackupPlan
+  BackupVaultName:
+    Value: !Ref SourceVault
+  BackupRoleArn:
+    Value: !GetAtt BackupRole.Arn
