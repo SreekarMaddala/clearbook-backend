@@ -174,7 +174,7 @@ def normalized_transaction(db, body):
             if 'STAFF' not in payee_roles(employee):
                 raise APIError('Select a staff member for salary payments.')
             try:
-                if not isinstance(salary_month, str) or date.fromisoformat(salary_month + '-01').strftime('%Y-%m') != salary_month:
+                if salary_month is not None and (not isinstance(salary_month, str) or date.fromisoformat(salary_month + '-01').strftime('%Y-%m') != salary_month):
                     raise ValueError
             except (ValueError, TypeError):
                 raise APIError('Choose the salary month in YYYY-MM format.')

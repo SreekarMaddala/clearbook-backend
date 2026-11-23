@@ -11,11 +11,11 @@ Legacy records without `roles` remain readable through category-based inference.
 Only explicit STAFF categories are inferred as staff.
 
 Salary payments are EXPENSE transactions with category `Staff Salaries`, the
-staff payee ID in `vendor`, and `salary_month` in YYYY-MM format. Payment date
-and salary month are independent. New salary payments require a month and a
-payee with the Staff role. An employee with salary history cannot lose that
-role. Historical payments may have no salary month; the UI displays Not recorded
-and requires the month when editing a salary payment. Payment analytics continue
+staff payee ID in `vendor`, and an optional legacy `salary_month` in YYYY-MM format.
+New salary payments require a payee with the Staff role, without a salary month.
+An employee with salary history cannot lose that role. The transaction form and
+details omit salary month; editing preserves any previously recorded month.
+Payment analytics continue
 to use payment dates. Reversed salary payments are excluded from staff totals.
 
 No new DynamoDB tables or indexes are required for this release. Query filtering

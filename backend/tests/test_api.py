@@ -143,13 +143,21 @@ class APITest(unittest.TestCase):
         self.assertEqual(self.call('POST', '/transactions/' + payment['id'] + '/reverse',
                                   {'reason': 'Test reversal', 'version': changed['version']})[0], 200)
 
-    def test_salary_requires_staff_and_valid_month(self):
+    def test_salary_requires_staff_and_valid_optional_month(self):
         staff = self.create('/vendors', {'name': 'Employee', 'category': 'Staff Salaries', 'roles': ['STAFF']})
         salary = self.expense(vendor=staff['id'], category='Staff Salaries', salary_month='2026-10')
-        for changes in ({'salary_month': None}, {'salary_month': '2026-13'}, {'salary_month': '2026-1'},
+        for changes in ({'salary_month': '2026-13'}, {'salary_month': '2026-1'},
                         {'vendor': self.vendor['id']}, {'vendor': None}, {'category': 'Fuel'}):
             self.assertIn(self.call('POST', '/transactions', {**salary, **changes},
                                     headers={'Idempotency-Key': str(uuid4())})[0], (400, 404))
+        for month_fields in ({}, {'salary_month': None}):
+            body = self.expense(vendor=staff['id'], category='Staff Salaries', **month_fields)
+            payment = self.create('/transactions', body)
+            self.assertIsNone(payment.get('salary_month'))
+            status, updated = self.call('PATCH', '/transactions/' + payment['id'],
+                                        {'notes': 'Edited without month', 'version': payment['version']})
+            self.assertEqual(status, 200, updated)
+            self.assertIsNone(updated.get('salary_month'))
         for roles in ([], 'STAFF', ['UNKNOWN'], [None]):
             self.assertEqual(self.call('PATCH', '/vendors/' + staff['id'], {'roles': roles})[0], 400)
         self.assertEqual(self.call('PATCH', '/vendors/' + staff['id'], {'roles': ['SUPPLIER']})[0], 400)
